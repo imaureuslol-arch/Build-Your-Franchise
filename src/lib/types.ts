@@ -7,6 +7,8 @@ export interface PlayerRaw {
   contract_29: string | null;
   contract_30: string | null;
   user_name: string | null;
+  ppg: number | null;
+  avg_gp: number | null;
 }
 
 export interface Player {
@@ -17,6 +19,8 @@ export interface Player {
   contract_28: number | null;
   contract_29: number | null;
   contract_30: number | null;
+  ppg: number | null;
+  avg_gp: number | null;
 }
 
 export interface TeamOwner {
@@ -83,6 +87,8 @@ export function parsePlayer(raw: PlayerRaw): Player {
     contract_28: parseSalary(raw.contract_28),
     contract_29: parseSalary(raw.contract_29),
     contract_30: parseSalary(raw.contract_30),
+    ppg: raw.ppg,
+    avg_gp: raw.avg_gp,
   };
 }
 

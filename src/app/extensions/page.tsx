@@ -28,6 +28,7 @@ export default function ExtensionsPage() {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [offersUsed, setOffersUsed] = useState(0);
@@ -56,20 +57,18 @@ export default function ExtensionsPage() {
       )
     : eligiblePlayers;
 
-  // Fair value in dollars, falling back to contract salary
-  function getFairValueDollars(stats: PlayerStats | null, player: Player): number {
-    if (stats) return stats.fairValue * 1_000_000;
-    return player.contract_27 ?? player.contract_28 ?? 10_000_000;
-  }
-
   async function startNegotiation(player: Player) {
     setSelectedPlayer(player);
     setPlayerStats(null);
+    setStatsError(null);
     setStatsLoading(true);
-    setChat([{
-      role: "player",
-      content: `Hey, I'm open to discussing an extension with you. I've got a number in mind, but let's see what you've got for me. You have 3 offers to make it work.`,
-    }]);
+    setChat([
+      {
+        role: "player",
+        content:
+          "Hey, I'm open to discussing an extension with you. I've got a number in mind, but let's see what you've got for me. You have 3 offers to make it work.",
+      },
+    ]);
     setOffersUsed(0);
     setNegotiationDone(false);
     setAgreementReached(false);
@@ -79,16 +78,22 @@ export default function ExtensionsPage() {
     setValidationError(null);
     setBestRatioSoFar(0);
     setLastOfferAvg(0);
-    setYearAmounts(Object.fromEntries(getExtensionYears(player).map((y) => [y, 10_000_000])));
+    setYearAmounts(
+      Object.fromEntries(getExtensionYears(player).map((y) => [y, 10_000_000]))
+    );
 
     try {
-      const res = await fetch(`/api/player-stats?name=${encodeURIComponent(player.name)}`);
+      const res = await fetch(
+        `/api/player-stats?name=${encodeURIComponent(player.name)}`
+      );
+      const data = await res.json();
       if (res.ok) {
-        const stats: PlayerStats = await res.json();
-        setPlayerStats(stats);
+        setPlayerStats(data as PlayerStats);
+      } else {
+        setStatsError(data.error ?? "Stats unavailable — contact the commissioner.");
       }
     } catch {
-      // Stats unavailable — fall back to contract salary silently
+      setStatsError("Failed to fetch player stats — contact the commissioner.");
     } finally {
       setStatsLoading(false);
     }
@@ -102,7 +107,8 @@ export default function ExtensionsPage() {
         return prev.filter((y) => y < year);
       } else {
         const yearIndex = available.indexOf(year);
-        if (yearIndex > 0 && !prev.includes(available[yearIndex - 1])) return prev;
+        if (yearIndex > 0 && !prev.includes(available[yearIndex - 1]))
+          return prev;
         return [...prev, year].sort((a, b) => a - b);
       }
     });
@@ -110,13 +116,25 @@ export default function ExtensionsPage() {
   }
 
   function submitOffer() {
-    if (!selectedPlayer || selectedYears.length === 0 || negotiationDone) return;
+    if (
+      !selectedPlayer ||
+      !playerStats ||
+      selectedYears.length === 0 ||
+      negotiationDone
+    )
+      return;
 
-    const currentTotal = selectedYears.reduce((sum, year) => sum + (yearAmounts[year] || 0), 0);
+    const fairValue = playerStats.fairValue * 1_000_000;
+    const currentTotal = selectedYears.reduce(
+      (sum, year) => sum + (yearAmounts[year] || 0),
+      0
+    );
     const currentAvg = currentTotal / selectedYears.length;
 
     if (offersUsed > 0 && currentAvg < lastOfferAvg) {
-      setValidationError(`You can't lower your offer! Your last offer averaged ${formatSalary(lastOfferAvg)}.`);
+      setValidationError(
+        `You can't lower your offer! Your last offer averaged ${formatSalary(lastOfferAvg)}.`
+      );
       return;
     }
 
@@ -125,8 +143,10 @@ export default function ExtensionsPage() {
       const prevYear = sortedYears[i - 1];
       const currYear = sortedYears[i];
       const diff = Math.abs(yearAmounts[currYear] - yearAmounts[prevYear]);
-      if (diff > yearAmounts[prevYear] * 0.10) {
-        setValidationError(`Salary variance too high: ${currYear} must be within 10% of ${prevYear}`);
+      if (diff > yearAmounts[prevYear] * 0.1) {
+        setValidationError(
+          `Salary variance too high: ${currYear} must be within 10% of ${prevYear}`
+        );
         return;
       }
     }
@@ -137,7 +157,10 @@ export default function ExtensionsPage() {
     for (const y of selectedYears) amounts[y] = yearAmounts[y];
 
     const yearLabel = selectedYears.length === 1 ? "year" : "years";
-    const yearDetails = selectedYears.sort().map((y) => `${y}: ${formatSalary(amounts[y])}`).join(", ");
+    const yearDetails = selectedYears
+      .sort()
+      .map((y) => `${y}: ${formatSalary(amounts[y])}`)
+      .join(", ");
 
     const userMsg: ChatMessage = {
       role: "user",
@@ -145,8 +168,12 @@ export default function ExtensionsPage() {
       offer: { years: selectedYears, amounts },
     };
 
-    const fairValue = getFairValueDollars(playerStats, selectedPlayer);
-    const playerResponse = generatePlayerResponse(fairValue, amounts, selectedYears, offerNum);
+    const playerResponse = generatePlayerResponse(
+      fairValue,
+      amounts,
+      selectedYears,
+      offerNum
+    );
 
     const currentRatio = currentAvg / fairValue;
     const updatedBestRatio = Math.max(bestRatioSoFar, currentRatio);
@@ -194,11 +221,21 @@ export default function ExtensionsPage() {
       setNegotiationDone(true);
       setAgreementReached(true);
       setShowCopyPopup(true);
-      setChat((prev) => [...prev, { role: "player", content: "Smart move. I'll see you at training camp." }]);
+      setChat((prev) => [
+        ...prev,
+        { role: "player", content: "Smart move. I'll see you at training camp." },
+      ]);
     } else {
       setNegotiationDone(true);
       setAgreementReached(false);
-      setChat((prev) => [...prev, { role: "player", content: "This is the kinda mistake that gets you fired. Don't call me again." }]);
+      setChat((prev) => [
+        ...prev,
+        {
+          role: "player",
+          content:
+            "This is the kinda mistake that gets you fired. Don't call me again.",
+        },
+      ]);
     }
   }
 
@@ -208,37 +245,81 @@ export default function ExtensionsPage() {
     years: number[],
     offerNum: number
   ): { message: ChatMessage; accepted: boolean } {
-    const avgPerYear = Object.values(amounts).reduce((s, v) => s + v, 0) / years.length;
+    const avgPerYear =
+      Object.values(amounts).reduce((s, v) => s + v, 0) / years.length;
     const ratio = fairValue > 0 ? avgPerYear / fairValue : 1;
 
     const remainingOffers = 3 - offerNum;
-    const offerText = remainingOffers === 1 ? "1 offer remaining" : `${remainingOffers} offers remaining`;
+    const offerText =
+      remainingOffers === 1
+        ? "1 offer remaining"
+        : `${remainingOffers} offers remaining`;
 
-    if (ratio >= 1.25) return { message: { role: "player", content: `HAHA! Hell yeah man! You got a damn deal!` }, accepted: true };
-    if (ratio >= 0.98) return { message: { role: "player", content: `Alright, that's a fair deal. Let's do it.` }, accepted: true };
+    if (ratio >= 1.25)
+      return {
+        message: {
+          role: "player",
+          content: "HAHA! Hell yeah man! You got a damn deal!",
+        },
+        accepted: true,
+      };
+    if (ratio >= 0.98)
+      return {
+        message: {
+          role: "player",
+          content: "Alright, that's a fair deal. Let's do it.",
+        },
+        accepted: true,
+      };
 
     let responseContent = "";
-    if (ratio >= 0.90) responseContent = `This is pretty fair. Give me a small bump and you've got a deal. (${offerText})`;
-    else if (ratio >= 0.80) responseContent = `This is a bit too low for me, but we're close. (${offerText})`;
-    else if (ratio >= 0.70) responseContent = `I like playing here but I'm gonna need more. (${offerText})`;
-    else if (ratio >= 0.60) responseContent = `I've got much better offers from other teams. (${offerText})`;
-    else if (ratio >= 0.50) responseContent = `This is a low-ball offer, I know what I'm worth. (${offerText})`;
-    else if (ratio >= 0.40) responseContent = `Try again with a real offer. (${offerText})`;
-    else if (ratio >= 0.30) responseContent = `This is insultingly low. (${offerText})`;
-    else if (ratio >= 0.20) responseContent = `You're wasting my time. (${offerText})`;
-    else responseContent = `Are you serious? I'll walk out of here right now. (${offerText})`;
+    if (ratio >= 0.9)
+      responseContent = `This is pretty fair. Give me a small bump and you've got a deal. (${offerText})`;
+    else if (ratio >= 0.8)
+      responseContent = `This is a bit too low for me, but we're close. (${offerText})`;
+    else if (ratio >= 0.7)
+      responseContent = `I like playing here but I'm gonna need more. (${offerText})`;
+    else if (ratio >= 0.6)
+      responseContent = `I've got much better offers from other teams. (${offerText})`;
+    else if (ratio >= 0.5)
+      responseContent = `This is a low-ball offer, I know what I'm worth. (${offerText})`;
+    else if (ratio >= 0.4)
+      responseContent = `Try again with a real offer. (${offerText})`;
+    else if (ratio >= 0.3)
+      responseContent = `This is insultingly low. (${offerText})`;
+    else if (ratio >= 0.2)
+      responseContent = `You're wasting my time. (${offerText})`;
+    else
+      responseContent = `Are you serious? I'll walk out of here right now. (${offerText})`;
 
-    return { message: { role: "player", content: responseContent }, accepted: false };
+    return {
+      message: { role: "player", content: responseContent },
+      accepted: false,
+    };
   }
 
   function getCopyText(): string {
     if (!selectedPlayer || !finalOffer) return "";
-    const yearDetails = finalOffer.years.sort().map((y) => `  ${y}: ${formatSalary(finalOffer.amounts[y])}`).join("\n");
-    const total = Object.values(finalOffer.amounts).reduce((s, v) => s + v, 0);
+    const yearDetails = finalOffer.years
+      .sort()
+      .map((y) => `  ${y}: ${formatSalary(finalOffer.amounts[y])}`)
+      .join("\n");
+    const total = Object.values(finalOffer.amounts).reduce(
+      (s, v) => s + v,
+      0
+    );
     return `Extension Agreement\nPlayer: ${selectedPlayer.name}\nTeam: ${selectedPlayer.team}\nYears:\n${yearDetails}\nTotal Value: ${formatSalary(total)}`;
   }
 
-  if (loading) return <div className="flex items-center justify-center h-96 text-text-muted">Loading...</div>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-96 text-text-muted">
+        Loading...
+      </div>
+    );
+
+  // Whether the negotiation panel can accept offers
+  const canNegotiate = !!playerStats && !statsError && !statsLoading;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -268,7 +349,9 @@ export default function ExtensionsPage() {
                   key={player.name}
                   onClick={() => startNegotiation(player)}
                   className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-surface-light transition-colors ${
-                    selectedPlayer?.name === player.name ? "bg-primary/10 border-l-2 border-l-primary" : ""
+                    selectedPlayer?.name === player.name
+                      ? "bg-primary/10 border-l-2 border-l-primary"
+                      : ""
                   }`}
                 >
                   <div className="font-medium text-sm">{player.name}</div>
@@ -291,10 +374,19 @@ export default function ExtensionsPage() {
                 <div>
                   <h2 className="font-bold text-lg">{selectedPlayer.name}</h2>
                   {statsLoading ? (
-                    <p className="text-xs text-text-dim mt-0.5">Fetching market value…</p>
+                    <p className="text-xs text-text-dim mt-0.5">
+                      Fetching market value…
+                    </p>
+                  ) : statsError ? (
+                    <p className="text-xs text-cap-over mt-0.5">{statsError}</p>
                   ) : playerStats ? (
                     <div className="flex gap-3 mt-0.5 text-xs text-text-muted">
-                      <span>Market Value: <span className="text-text font-semibold">{formatSalary(playerStats.fairValue * 1_000_000)}/yr</span></span>
+                      <span>
+                        Market Value:{" "}
+                        <span className="text-text font-semibold">
+                          {formatSalary(playerStats.fairValue * 1_000_000)}/yr
+                        </span>
+                      </span>
                       <span className="text-text-dim">|</span>
                       <span>{playerStats.ppg} PPG</span>
                       <span className="text-text-dim">|</span>
@@ -302,32 +394,55 @@ export default function ExtensionsPage() {
                       <span className="text-text-dim">|</span>
                       <span>{playerStats.avgGamesPlayed} GP/season</span>
                     </div>
-                  ) : (
-                    <p className="text-xs text-text-muted mt-0.5">
-                      Current: {formatSalary(selectedPlayer.contract_27 ?? selectedPlayer.contract_28)}
-                    </p>
-                  )}
+                  ) : null}
                 </div>
-                {!negotiationDone && <div className="text-sm text-text-dim">Offers: {offersUsed}/3</div>}
+                {!negotiationDone && (
+                  <div className="text-sm text-text-dim">
+                    Offers: {offersUsed}/3
+                  </div>
+                )}
               </div>
 
-              {/* Chat Window */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {chat.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm ${
-                      msg.role === "user" ? "bg-primary text-white" : "bg-surface-light text-text"
-                    }`}>
-                      {msg.content}
-                    </div>
+              {/* Stats error — blocks negotiation */}
+              {statsError && !statsLoading && (
+                <div className="flex-1 flex items-center justify-center p-8">
+                  <div className="text-center">
+                    <p className="text-cap-over font-bold text-sm mb-2">
+                      Cannot Negotiate
+                    </p>
+                    <p className="text-text-muted text-sm">{statsError}</p>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
+
+              {/* Chat Window — only when stats are available */}
+              {!statsError && (
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {chat.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm ${
+                          msg.role === "user"
+                            ? "bg-primary text-white"
+                            : "bg-surface-light text-text"
+                        }`}
+                      >
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Final Ultimatum Action */}
               {isFinalDemand && (
                 <div className="border-t-2 border-primary/30 p-4 bg-primary/5">
-                  <p className="text-sm font-bold text-center mb-3 text-primary uppercase tracking-tighter">Final Ultimatum</p>
+                  <p className="text-sm font-bold text-center mb-3 text-primary uppercase tracking-tighter">
+                    Final Ultimatum
+                  </p>
                   <div className="flex gap-3">
                     <button
                       onClick={() => handleFinalDecision(true)}
@@ -345,34 +460,43 @@ export default function ExtensionsPage() {
                 </div>
               )}
 
-              {/* Negotiation Inputs */}
-              {!negotiationDone && !isFinalDemand && (
+              {/* Negotiation Inputs — only when stats loaded successfully */}
+              {canNegotiate && !negotiationDone && !isFinalDemand && (
                 <div className="border-t border-border p-4">
                   <div className="mb-3">
                     <div className="flex gap-2 mb-4">
-                      {getExtensionYears(selectedPlayer).map((year, idx, arr) => {
-                        const isSelected = selectedYears.includes(year);
-                        const isDisabled = idx > 0 && !selectedYears.includes(arr[idx - 1]) && !isSelected;
-                        return (
-                          <button
-                            key={year}
-                            disabled={isDisabled}
-                            onClick={() => toggleYear(year)}
-                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                              isSelected ? "bg-primary text-white" : "bg-surface-light text-text-muted border border-border"
-                            } ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
-                          >
-                            {year}
-                          </button>
-                        );
-                      })}
+                      {getExtensionYears(selectedPlayer).map(
+                        (year, idx, arr) => {
+                          const isSelected = selectedYears.includes(year);
+                          const isDisabled =
+                            idx > 0 &&
+                            !selectedYears.includes(arr[idx - 1]) &&
+                            !isSelected;
+                          return (
+                            <button
+                              key={year}
+                              disabled={isDisabled}
+                              onClick={() => toggleYear(year)}
+                              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                isSelected
+                                  ? "bg-primary text-white"
+                                  : "bg-surface-light text-text-muted border border-border"
+                              } ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
+                            >
+                              {year}
+                            </button>
+                          );
+                        }
+                      )}
                     </div>
                     {selectedYears.length > 0 &&
                       selectedYears.sort().map((year) => (
                         <div key={year} className="mb-4">
                           <div className="flex justify-between text-sm mb-1">
                             <span className="text-text-muted">{year}</span>
-                            <span className="font-mono font-bold">{formatSalary(yearAmounts[year])}</span>
+                            <span className="font-mono font-bold">
+                              {formatSalary(yearAmounts[year])}
+                            </span>
                           </div>
                           <input
                             type="range"
@@ -381,7 +505,10 @@ export default function ExtensionsPage() {
                             step={500_000}
                             value={yearAmounts[year]}
                             onChange={(e) => {
-                              setYearAmounts((prev) => ({ ...prev, [year]: parseInt(e.target.value) }));
+                              setYearAmounts((prev) => ({
+                                ...prev,
+                                [year]: parseInt(e.target.value),
+                              }));
                               setValidationError(null);
                             }}
                             className="w-full"
@@ -396,10 +523,10 @@ export default function ExtensionsPage() {
                   )}
                   <button
                     onClick={submitOffer}
-                    disabled={selectedYears.length === 0 || statsLoading}
+                    disabled={selectedYears.length === 0}
                     className="w-full py-2.5 bg-primary text-white rounded-lg font-medium disabled:opacity-40"
                   >
-                    {statsLoading ? "Loading stats…" : `Submit Offer (${offersUsed + 1}/3)`}
+                    Submit Offer ({offersUsed + 1}/3)
                   </button>
                 </div>
               )}
@@ -407,13 +534,23 @@ export default function ExtensionsPage() {
               {/* End of Negotiation */}
               {negotiationDone && (
                 <div className="border-t border-border p-4 text-center">
-                  <p className={`font-bold mb-2 ${agreementReached ? "text-cap-under" : "text-cap-over"}`}>
-                    {agreementReached ? "Agreement Reached!" : "Negotiations Failed"}
+                  <p
+                    className={`font-bold mb-2 ${agreementReached ? "text-cap-under" : "text-cap-over"}`}
+                  >
+                    {agreementReached
+                      ? "Agreement Reached!"
+                      : "Negotiations Failed"}
                   </p>
                   <button
-                    onClick={() => (agreementReached ? setShowCopyPopup(true) : startNegotiation(selectedPlayer))}
+                    onClick={() =>
+                      agreementReached
+                        ? setShowCopyPopup(true)
+                        : startNegotiation(selectedPlayer)
+                    }
                     className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                      agreementReached ? "bg-cap-under text-white" : "bg-surface-light border border-border text-text-muted"
+                      agreementReached
+                        ? "bg-cap-under text-white"
+                        : "bg-surface-light border border-border text-text-muted"
                     }`}
                   >
                     {agreementReached ? "View Details" : "Try Again"}
@@ -429,13 +566,15 @@ export default function ExtensionsPage() {
       {showCopyPopup && finalOffer && selectedPlayer && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-xl p-6 max-w-md w-full border border-border">
-            <h3 className="text-lg font-bold mb-4 text-cap-under">Extension Signed</h3>
-            <pre className="bg-surface-light rounded-lg p-4 text-sm font-mono whitespace-pre-wrap mb-4">
-              {getCopyText()}
-            </pre>
+            <h3 className="text-lg font-bold mb-4 text-cap-under">
+              Extension Signed
+            </h3>
+            <pre className="bg-surface-light rounded-lg p-4 text-sm font-mono whitespace-pre-wrap mb-4">{getCopyText()}</pre>
             <div className="flex gap-3">
               <button
-                onClick={() => navigator.clipboard.writeText(getCopyText())}
+                onClick={() =>
+                  navigator.clipboard.writeText(getCopyText())
+                }
                 className="flex-1 py-2.5 bg-primary text-white rounded-lg font-medium"
               >
                 Copy

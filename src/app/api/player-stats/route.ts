@@ -1,10 +1,34 @@
 import { NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 const BDL_BASE = "https://api.balldontlie.io/v1";
-const SEASONS = [2022, 2023, 2024];
 
 function bdlHeaders() {
   return { Authorization: process.env.BDL_API_KEY! };
+}
+
+function getSupabaseServer() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+const SUFFIXES = /\s+(jr\.?|sr\.?|ii|iii|iv)$/i;
+
+/** Split "LeBron James Jr." → { first: "LeBron", last: "James" } */
+function splitName(fullName: string): { first: string; last: string } {
+  const cleaned = fullName.replace(SUFFIXES, "").trim();
+  const parts = cleaned.split(/\s+/);
+  if (parts.length === 1) return { first: parts[0], last: "" };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
+
+function ageFromDraftYear(draftYear: number | null): number | null {
+  if (!draftYear) return null;
+  // Most players enter the league around age 20
+  return 2026 - draftYear + 20;
 }
 
 function calcFairValue(age: number, ppg: number, avgGamesPlayed: number): number {
@@ -32,98 +56,79 @@ function calcFairValue(age: number, ppg: number, avgGamesPlayed: number): number
 
   const bonusTerm = 1 + 0.25 / (0.4 + Math.exp(-1 * (ppg - 30)));
 
-  const raw = ppgTerm * ppgFactor * gamesFactor * ageFactor * ageDecline * bonusTerm * 0.5;
+  const raw =
+    ppgTerm * ppgFactor * gamesFactor * ageFactor * ageDecline * bonusTerm * 0.5;
   return Math.min(65, raw); // millions
-}
-
-function ageFromBirthDate(birthDate: string): number {
-  const bd = new Date(birthDate);
-  const today = new Date("2026-04-09");
-  const age =
-    today.getFullYear() -
-    bd.getFullYear() -
-    (today < new Date(today.getFullYear(), bd.getMonth(), bd.getDate()) ? 1 : 0);
-  return age;
-}
-
-function ageFromDraftYear(draftYear: number | null): number {
-  // Most players enter the league at ~20; rough but reasonable fallback
-  return draftYear ? 2026 - draftYear + 20 : 27;
 }
 
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name");
   if (!name) return Response.json({ error: "name required" }, { status: 400 });
 
-  try {
-    // 1. Search for the player
-    const searchRes = await fetch(
-      `${BDL_BASE}/players?search=${encodeURIComponent(name)}&per_page=5`,
-      { headers: bdlHeaders() }
-    );
-    const searchData = await searchRes.json();
-    const player = searchData.data?.[0];
+  // ── 1. Read PPG + avg_gp from Supabase ──
+  const supabase = getSupabaseServer();
+  const { data: dbPlayer, error: dbError } = await supabase
+    .from("players")
+    .select("ppg, avg_gp")
+    .eq("name", name)
+    .maybeSingle();
 
-    if (!player) {
-      return Response.json({ error: "player not found" }, { status: 404 });
-    }
-
-    // 2. Determine age — try birth_date, fall back to draft_year
-    let age = 27;
-    try {
-      const detailRes = await fetch(`${BDL_BASE}/players/${player.id}`, {
-        headers: bdlHeaders(),
-      });
-      const detail = await detailRes.json();
-      if (detail.birth_date) {
-        age = ageFromBirthDate(detail.birth_date);
-      } else {
-        age = ageFromDraftYear(detail.draft_year ?? player.draft_year);
-      }
-    } catch {
-      age = ageFromDraftYear(player.draft_year);
-    }
-
-    // 3. Fetch season averages for last 3 seasons in parallel
-    const seasonResults = await Promise.all(
-      SEASONS.map((season) =>
-        fetch(
-          `${BDL_BASE}/season_averages?season=${season}&player_ids[]=${player.id}`,
-          { headers: bdlHeaders() }
-        )
-          .then((r) => r.json())
-          .then((d) => d.data?.[0] ?? null)
-          .catch(() => null)
-      )
-    );
-
-    const validSeasons = seasonResults.filter(Boolean);
-
-    if (validSeasons.length === 0) {
-      return Response.json({ error: "no stats found" }, { status: 404 });
-    }
-
-    // PPG from most recent season with data
-    const mostRecent = validSeasons[validSeasons.length - 1];
-    const ppg: number = mostRecent.pts ?? 0;
-
-    // Avg games played over available seasons
-    const avgGamesPlayed =
-      validSeasons.reduce((sum: number, s) => sum + (s.games_played ?? 0), 0) /
-      validSeasons.length;
-
-    const fairValueMillions = calcFairValue(age, ppg, avgGamesPlayed);
-
-    return Response.json({
-      fairValue: Math.round(fairValueMillions * 10) / 10, // 1 decimal place, in millions
-      age,
-      ppg: Math.round(ppg * 10) / 10,
-      avgGamesPlayed: Math.round(avgGamesPlayed),
-    });
-  } catch (err) {
+  if (dbError) {
     return Response.json(
-      { error: err instanceof Error ? err.message : "fetch failed" },
+      { error: `Database error: ${dbError.message}` },
       { status: 500 }
     );
   }
+
+  const ppg: number | null = dbPlayer?.ppg ?? null;
+  const avgGamesPlayed: number | null = dbPlayer?.avg_gp ?? null;
+
+  if (ppg == null || avgGamesPlayed == null) {
+    return Response.json(
+      { error: "Stats missing for this player — contact the commissioner to update." },
+      { status: 404 }
+    );
+  }
+
+  // ── 2. Look up age via BDL ──
+  let age: number | null = null;
+  try {
+    const { first, last } = splitName(name);
+
+    // Use first_name + last_name params (multi-word ?search= returns empty)
+    const params = new URLSearchParams({ per_page: "5" });
+    if (first) params.set("first_name", first);
+    if (last) params.set("last_name", last);
+
+    const searchRes = await fetch(`${BDL_BASE}/players?${params}`, {
+      headers: bdlHeaders(),
+    });
+
+    if (searchRes.ok) {
+      const searchData = await searchRes.json();
+      const player = searchData.data?.[0];
+      if (player) {
+        age = ageFromDraftYear(player.draft_year);
+      }
+    }
+  } catch {
+    // BDL down — age stays null
+  }
+
+  if (age == null) {
+    return Response.json(
+      { error: "Could not determine player age — contact the commissioner." },
+      { status: 404 }
+    );
+  }
+
+  // ── 3. Calculate fair value ──
+  const fairValueMillions = calcFairValue(age, ppg, avgGamesPlayed);
+
+  return Response.json({
+    fairValue: Math.round(fairValueMillions * 10) / 10,
+    age,
+    ppg: Math.round(ppg * 10) / 10,
+    avgGamesPlayed: Math.round(avgGamesPlayed),
+  });
 }
