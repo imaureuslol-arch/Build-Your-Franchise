@@ -13,11 +13,21 @@ import {
   formatSalary,
 } from "@/lib/types";
 
+interface PlayerStats {
+  fairValue: number; // millions
+  age: number;
+  ppg: number;
+  avgGamesPlayed: number;
+}
+
 export default function ExtensionsPage() {
   const { players: allPlayers, loading: playersLoading } = usePlayers();
   const { teamName, owner, isLoading: teamLoading } = useUserTeam();
   const loading = playersLoading || teamLoading;
+
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [offersUsed, setOffersUsed] = useState(0);
@@ -31,7 +41,7 @@ export default function ExtensionsPage() {
   } | null>(null);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [yearAmounts, setYearAmounts] = useState<{ [year: number]: number }>({});
-  
+
   const [isFinalDemand, setIsFinalDemand] = useState(false);
   const [finalDemandAmount, setFinalDemandAmount] = useState<number>(0);
   const [bestRatioSoFar, setBestRatioSoFar] = useState<number>(0);
@@ -46,11 +56,19 @@ export default function ExtensionsPage() {
       )
     : eligiblePlayers;
 
-  function startNegotiation(player: Player) {
+  // Fair value in dollars, falling back to contract salary
+  function getFairValueDollars(stats: PlayerStats | null, player: Player): number {
+    if (stats) return stats.fairValue * 1_000_000;
+    return player.contract_27 ?? player.contract_28 ?? 10_000_000;
+  }
+
+  async function startNegotiation(player: Player) {
     setSelectedPlayer(player);
+    setPlayerStats(null);
+    setStatsLoading(true);
     setChat([{
       role: "player",
-      content: `Hey, I'm open to discussing an extension with you. I've got a number in mind,but let's see what you've got for me. You have 3 offers to make it work.`,
+      content: `Hey, I'm open to discussing an extension with you. I've got a number in mind, but let's see what you've got for me. You have 3 offers to make it work.`,
     }]);
     setOffersUsed(0);
     setNegotiationDone(false);
@@ -62,6 +80,18 @@ export default function ExtensionsPage() {
     setBestRatioSoFar(0);
     setLastOfferAvg(0);
     setYearAmounts(Object.fromEntries(getExtensionYears(player).map((y) => [y, 10_000_000])));
+
+    try {
+      const res = await fetch(`/api/player-stats?name=${encodeURIComponent(player.name)}`);
+      if (res.ok) {
+        const stats: PlayerStats = await res.json();
+        setPlayerStats(stats);
+      }
+    } catch {
+      // Stats unavailable — fall back to contract salary silently
+    } finally {
+      setStatsLoading(false);
+    }
   }
 
   function toggleYear(year: number) {
@@ -82,11 +112,9 @@ export default function ExtensionsPage() {
   function submitOffer() {
     if (!selectedPlayer || selectedYears.length === 0 || negotiationDone) return;
 
-    // FIXED: Only calculate average based on SELECTED years
     const currentTotal = selectedYears.reduce((sum, year) => sum + (yearAmounts[year] || 0), 0);
     const currentAvg = currentTotal / selectedYears.length;
-    
-    // Rule: Subsequent offers cannot be lower than the previous one
+
     if (offersUsed > 0 && currentAvg < lastOfferAvg) {
       setValidationError(`You can't lower your offer! Your last offer averaged ${formatSalary(lastOfferAvg)}.`);
       return;
@@ -96,12 +124,8 @@ export default function ExtensionsPage() {
     for (let i = 1; i < sortedYears.length; i++) {
       const prevYear = sortedYears[i - 1];
       const currYear = sortedYears[i];
-      const prevVal = yearAmounts[prevYear];
-      const currVal = yearAmounts[currYear];
-      const diff = Math.abs(currVal - prevVal);
-      const maxAllowed = prevVal * 0.10;
-
-      if (diff > maxAllowed) {
+      const diff = Math.abs(yearAmounts[currYear] - yearAmounts[prevYear]);
+      if (diff > yearAmounts[prevYear] * 0.10) {
         setValidationError(`Salary variance too high: ${currYear} must be within 10% of ${prevYear}`);
         return;
       }
@@ -111,47 +135,43 @@ export default function ExtensionsPage() {
     const offerNum = offersUsed + 1;
     const amounts: { [year: number]: number } = {};
     for (const y of selectedYears) amounts[y] = yearAmounts[y];
-    
+
     const yearLabel = selectedYears.length === 1 ? "year" : "years";
     const yearDetails = selectedYears.sort().map((y) => `${y}: ${formatSalary(amounts[y])}`).join(", ");
-    
+
     const userMsg: ChatMessage = {
       role: "user",
       content: `Offer #${offerNum}: ${selectedYears.length} ${yearLabel} — ${yearDetails}`,
       offer: { years: selectedYears, amounts },
     };
 
-    const playerResponse = generatePlayerResponse(selectedPlayer, amounts, selectedYears, offerNum);
-    
-    // Tracking Ratio Logic
-    const currentSalary = selectedPlayer.contract_27 || selectedPlayer.contract_28 || 10_000_000;
-    const currentRatio = currentAvg / currentSalary;
-    
-    // Update best ratio and current average floor
+    const fairValue = getFairValueDollars(playerStats, selectedPlayer);
+    const playerResponse = generatePlayerResponse(fairValue, amounts, selectedYears, offerNum);
+
+    const currentRatio = currentAvg / fairValue;
     const updatedBestRatio = Math.max(bestRatioSoFar, currentRatio);
     setBestRatioSoFar(updatedBestRatio);
     setLastOfferAvg(currentAvg);
 
     if (!playerResponse.accepted && offerNum >= 3) {
-      // Saving Grace Check: Use the updated ratio from THIS offer as well
       const isSoften = updatedBestRatio >= 0.8;
       const multiplier = isSoften ? 1.1 : 1.5;
-      const demandVal = currentSalary * multiplier;
-      
+      const demandVal = fairValue * multiplier;
+
       setFinalDemandAmount(demandVal);
       setIsFinalDemand(true);
-      
+
       const ultimatumMsg: ChatMessage = {
         role: "player",
-        content: isSoften 
+        content: isSoften
           ? `Look, your last offer was close, and I'd like to stay here. Give me ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel} and I'll sign right now.`
-          : `Alright. I'm done. Pay me what I'm worth or I'm leaving. My final demand is ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel}. Take it or leave it.`
+          : `Alright. I'm done. Pay me what I'm worth or I'm leaving. My final demand is ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel}. Take it or leave it.`,
       };
 
-      setChat([...chat, userMsg, ultimatumMsg]);
+      setChat((prev) => [...prev, userMsg, ultimatumMsg]);
     } else {
-      setChat([...chat, userMsg, playerResponse.message]);
-      
+      setChat((prev) => [...prev, userMsg, playerResponse.message]);
+
       if (playerResponse.accepted) {
         setNegotiationDone(true);
         setAgreementReached(true);
@@ -166,34 +186,36 @@ export default function ExtensionsPage() {
   function handleFinalDecision(accepted: boolean) {
     if (!selectedPlayer) return;
     setIsFinalDemand(false);
-    
+
     if (accepted) {
       const amounts: { [year: number]: number } = {};
-      selectedYears.forEach(y => amounts[y] = finalDemandAmount);
+      selectedYears.forEach((y) => (amounts[y] = finalDemandAmount));
       setFinalOffer({ years: selectedYears, amounts });
       setNegotiationDone(true);
       setAgreementReached(true);
       setShowCopyPopup(true);
-      setChat([...chat, { role: "player", content: "Smart move. I'll see you at training camp." }]);
+      setChat((prev) => [...prev, { role: "player", content: "Smart move. I'll see you at training camp." }]);
     } else {
       setNegotiationDone(true);
       setAgreementReached(false);
-      setChat([...chat, { role: "player", content: "This is the kinda mistake that gets you fired. Don't call me again." }]);
+      setChat((prev) => [...prev, { role: "player", content: "This is the kinda mistake that gets you fired. Don't call me again." }]);
     }
   }
 
   function generatePlayerResponse(
-    player: Player, amounts: { [year: number]: number }, years: number[], offerNum: number
+    fairValue: number,
+    amounts: { [year: number]: number },
+    years: number[],
+    offerNum: number
   ): { message: ChatMessage; accepted: boolean } {
     const avgPerYear = Object.values(amounts).reduce((s, v) => s + v, 0) / years.length;
-    const currentSalary = player.contract_27 || player.contract_28 || 0;
-    const ratio = currentSalary > 0 ? avgPerYear / currentSalary : 1;
-    
+    const ratio = fairValue > 0 ? avgPerYear / fairValue : 1;
+
     const remainingOffers = 3 - offerNum;
     const offerText = remainingOffers === 1 ? "1 offer remaining" : `${remainingOffers} offers remaining`;
 
     if (ratio >= 1.25) return { message: { role: "player", content: `HAHA! Hell yeah man! You got a damn deal!` }, accepted: true };
-    if (ratio >= 0.98) return { message: { role: "player", content: `Alright, thats a fair deal. Let's do it.` }, accepted: true };
+    if (ratio >= 0.98) return { message: { role: "player", content: `Alright, that's a fair deal. Let's do it.` }, accepted: true };
 
     let responseContent = "";
     if (ratio >= 0.90) responseContent = `This is pretty fair. Give me a small bump and you've got a deal. (${offerText})`;
@@ -214,10 +236,6 @@ export default function ExtensionsPage() {
     const yearDetails = finalOffer.years.sort().map((y) => `  ${y}: ${formatSalary(finalOffer.amounts[y])}`).join("\n");
     const total = Object.values(finalOffer.amounts).reduce((s, v) => s + v, 0);
     return `Extension Agreement\nPlayer: ${selectedPlayer.name}\nTeam: ${selectedPlayer.team}\nYears:\n${yearDetails}\nTotal Value: ${formatSalary(total)}`;
-  }
-
-  function handleCopy() {
-    navigator.clipboard.writeText(getCopyText());
   }
 
   if (loading) return <div className="flex items-center justify-center h-96 text-text-muted">Loading...</div>;
@@ -269,10 +287,26 @@ export default function ExtensionsPage() {
             </div>
           ) : (
             <div className="bg-surface rounded-xl border border-border flex flex-col h-[700px]">
-              <div className="p-4 border-b border-border flex justify-between items-center">
+              <div className="p-4 border-b border-border flex justify-between items-start">
                 <div>
                   <h2 className="font-bold text-lg">{selectedPlayer.name}</h2>
-                  <p className="text-sm text-text-muted">Current: {formatSalary(selectedPlayer.contract_27 ?? selectedPlayer.contract_28)}</p>
+                  {statsLoading ? (
+                    <p className="text-xs text-text-dim mt-0.5">Fetching market value…</p>
+                  ) : playerStats ? (
+                    <div className="flex gap-3 mt-0.5 text-xs text-text-muted">
+                      <span>Market Value: <span className="text-text font-semibold">{formatSalary(playerStats.fairValue * 1_000_000)}/yr</span></span>
+                      <span className="text-text-dim">|</span>
+                      <span>{playerStats.ppg} PPG</span>
+                      <span className="text-text-dim">|</span>
+                      <span>Age {playerStats.age}</span>
+                      <span className="text-text-dim">|</span>
+                      <span>{playerStats.avgGamesPlayed} GP/season</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-text-muted mt-0.5">
+                      Current: {formatSalary(selectedPlayer.contract_27 ?? selectedPlayer.contract_28)}
+                    </p>
+                  )}
                 </div>
                 {!negotiationDone && <div className="text-sm text-text-dim">Offers: {offersUsed}/3</div>}
               </div>
@@ -295,13 +329,13 @@ export default function ExtensionsPage() {
                 <div className="border-t-2 border-primary/30 p-4 bg-primary/5">
                   <p className="text-sm font-bold text-center mb-3 text-primary uppercase tracking-tighter">Final Ultimatum</p>
                   <div className="flex gap-3">
-                    <button 
+                    <button
                       onClick={() => handleFinalDecision(true)}
                       className="flex-1 py-3 bg-cap-under text-white rounded-lg font-bold hover:opacity-90 transition-opacity"
                     >
                       ACCEPT ({formatSalary(finalDemandAmount)}/yr)
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleFinalDecision(false)}
                       className="flex-1 py-3 bg-cap-over text-white rounded-lg font-bold hover:opacity-90 transition-opacity"
                     >
@@ -333,31 +367,39 @@ export default function ExtensionsPage() {
                         );
                       })}
                     </div>
-                    {selectedYears.length > 0 && selectedYears.sort().map((year) => (
-                      <div key={year} className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-text-muted">{year}</span>
-                          <span className="font-mono font-bold">{formatSalary(yearAmounts[year])}</span>
+                    {selectedYears.length > 0 &&
+                      selectedYears.sort().map((year) => (
+                        <div key={year} className="mb-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-text-muted">{year}</span>
+                            <span className="font-mono font-bold">{formatSalary(yearAmounts[year])}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={1_000_000}
+                            max={80_000_000}
+                            step={500_000}
+                            value={yearAmounts[year]}
+                            onChange={(e) => {
+                              setYearAmounts((prev) => ({ ...prev, [year]: parseInt(e.target.value) }));
+                              setValidationError(null);
+                            }}
+                            className="w-full"
+                          />
                         </div>
-                        <input
-                          type="range" min={1_000_000} max={80_000_000} step={500_000}
-                          value={yearAmounts[year]}
-                          onChange={(e) => {
-                            setYearAmounts((prev) => ({ ...prev, [year]: parseInt(e.target.value) }));
-                            setValidationError(null);
-                          }}
-                          className="w-full"
-                        />
-                      </div>
-                    ))}
+                      ))}
                   </div>
-                  {validationError && <div className="mb-3 p-2 bg-red-500/10 border border-red-500/50 rounded text-red-500 text-xs">{validationError}</div>}
+                  {validationError && (
+                    <div className="mb-3 p-2 bg-red-500/10 border border-red-500/50 rounded text-red-500 text-xs">
+                      {validationError}
+                    </div>
+                  )}
                   <button
                     onClick={submitOffer}
-                    disabled={selectedYears.length === 0}
+                    disabled={selectedYears.length === 0 || statsLoading}
                     className="w-full py-2.5 bg-primary text-white rounded-lg font-medium disabled:opacity-40"
                   >
-                    Submit Offer ({offersUsed + 1}/3)
+                    {statsLoading ? "Loading stats…" : `Submit Offer (${offersUsed + 1}/3)`}
                   </button>
                 </div>
               )}
@@ -365,11 +407,15 @@ export default function ExtensionsPage() {
               {/* End of Negotiation */}
               {negotiationDone && (
                 <div className="border-t border-border p-4 text-center">
-                    <p className={`font-bold mb-2 ${agreementReached ? "text-cap-under" : "text-cap-over"}`}>
-                     {agreementReached ? "Agreement Reached!" : "Negotiations Failed"}
-                   </p>
-                  <button onClick={() => agreementReached ? setShowCopyPopup(true) : startNegotiation(selectedPlayer)} 
-                    className={`px-4 py-2 rounded-lg text-sm font-medium ${agreementReached ? "bg-cap-under text-white" : "bg-surface-light border border-border text-text-muted"}`}>
+                  <p className={`font-bold mb-2 ${agreementReached ? "text-cap-under" : "text-cap-over"}`}>
+                    {agreementReached ? "Agreement Reached!" : "Negotiations Failed"}
+                  </p>
+                  <button
+                    onClick={() => (agreementReached ? setShowCopyPopup(true) : startNegotiation(selectedPlayer))}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                      agreementReached ? "bg-cap-under text-white" : "bg-surface-light border border-border text-text-muted"
+                    }`}
+                  >
                     {agreementReached ? "View Details" : "Try Again"}
                   </button>
                 </div>
@@ -384,10 +430,22 @@ export default function ExtensionsPage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-xl p-6 max-w-md w-full border border-border">
             <h3 className="text-lg font-bold mb-4 text-cap-under">Extension Signed</h3>
-            <pre className="bg-surface-light rounded-lg p-4 text-sm font-mono whitespace-pre-wrap mb-4">{getCopyText()}</pre>
+            <pre className="bg-surface-light rounded-lg p-4 text-sm font-mono whitespace-pre-wrap mb-4">
+              {getCopyText()}
+            </pre>
             <div className="flex gap-3">
-              <button onClick={handleCopy} className="flex-1 py-2.5 bg-primary text-white rounded-lg font-medium">Copy</button>
-              <button onClick={() => setShowCopyPopup(false)} className="flex-1 py-2.5 bg-surface-light border border-border rounded-lg">Close</button>
+              <button
+                onClick={() => navigator.clipboard.writeText(getCopyText())}
+                className="flex-1 py-2.5 bg-primary text-white rounded-lg font-medium"
+              >
+                Copy
+              </button>
+              <button
+                onClick={() => setShowCopyPopup(false)}
+                className="flex-1 py-2.5 bg-surface-light border border-border rounded-lg"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
