@@ -251,13 +251,13 @@ function TradesPage() {
         </div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 -mx-3 sm:mx-0 px-3 sm:px-0 snap-x snap-mandatory sm:snap-none">
         {slots.map((slot, i) => {
           const otherTeams = slots
             .filter((s, j) => j !== i && s.team)
             .map((s) => s.team);
           return (
-            <div key={i} className="flex-1 min-w-[280px]">
+            <div key={i} className="flex-1 min-w-[260px] sm:min-w-[280px] snap-start">
               <TeamTradeColumn
                 teamName={slot.team}
                 allTeams={allTeams.filter((t) => t === slot.team || !usedTeams.includes(t))}

@@ -25,8 +25,8 @@ export default function TeamPickerModal({ onSelect }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-xl p-8 max-w-md w-full shadow-2xl">
-        <h2 className="text-3xl font-bold text-text mb-2 font-[family-name:var(--font-blocky)] tracking-wide uppercase">Welcome</h2>
+      <div className="bg-surface border border-border rounded-xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
+        <h2 className="text-2xl sm:text-3xl font-bold text-text mb-2 font-[family-name:var(--font-blocky)] tracking-wide uppercase">Welcome</h2>
         <p className="text-text-muted mb-6 text-sm leading-relaxed">
           Select the team you own. This gets locked to your IP address — you'll
           only be able to negotiate extensions and make free-agent offers as

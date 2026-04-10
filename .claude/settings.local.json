@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -H \"Authorization: 87285430-21e6-4b97-ab38-36bcdc8f1e41\" \"https://api.balldontlie.io/v1/players?search=LeBron%20James&per_page=3\")",
+      "Bash(curl -s -H \"Authorization: 87285430-21e6-4b97-ab38-36bcdc8f1e41\" \"https://api.balldontlie.io/v1/season_averages?season=2024&player_ids[]=237\")",
+      "Bash(curl -s -H \"Authorization: 87285430-21e6-4b97-ab38-36bcdc8f1e41\" \"https://api.balldontlie.io/v1/players?search=LeBron&per_page=3\")",
+      "Bash(curl -s -H \"Authorization: 87285430-21e6-4b97-ab38-36bcdc8f1e41\" \"https://api.balldontlie.io/v1/players?last_name=James&per_page=3\")",
+      "Bash(curl -s \"https://api.balldontlie.io/v1/players?search=LeBron&per_page=3\" -H \"x-api-key: 87285430-21e6-4b97-ab38-36bcdc8f1e41\")",
+      "Bash(curl -v -s -H \"Authorization: 87285430-21e6-4b97-ab38-36bcdc8f1e41\" \"https://api.balldontlie.io/v1/season_averages?season=2024&player_ids%5B%5D=237\")",
+      "Bash(curl -s -H \"Authorization: 87285430-21e6-4b97-ab38-36bcdc8f1e41\" \"https://api.balldontlie.io/v1/stats?seasons[]=2024&player_ids[]=237&per_page=5\")",
+      "Bash(gh api:*)"
+    ]
+  }
+}

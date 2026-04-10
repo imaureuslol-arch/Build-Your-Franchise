@@ -34,7 +34,7 @@ export default function TeamTradeColumn({
   const showDestPicker = otherTeamsInTrade.length > 1;
 
   return (
-    <div className="bg-surface rounded-xl border border-border flex flex-col min-w-[280px]">
+    <div className="bg-surface rounded-xl border border-border flex flex-col min-w-[260px] sm:min-w-[280px]">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
           <select
