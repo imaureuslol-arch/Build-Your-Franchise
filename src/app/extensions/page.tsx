@@ -322,8 +322,8 @@ export default function ExtensionsPage() {
   const canNegotiate = !!playerStats && !statsError && !statsLoading;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="flex items-baseline gap-3 mb-6">
+    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-6">
         <h1 className="text-2xl font-bold">Player Extensions</h1>
         <span className="text-sm text-text-muted">
           {owner?.user_name ?? teamName} &mdash; {teamName}
@@ -369,25 +369,18 @@ export default function ExtensionsPage() {
               Select a player to begin
             </div>
           ) : (
-            <div className="bg-surface rounded-xl border border-border flex flex-col h-[700px]">
+            <div className="bg-surface rounded-xl border border-border flex flex-col h-[600px] sm:h-[700px]">
               <div className="p-4 border-b border-border flex justify-between items-start">
                 <div>
                   <h2 className="font-bold text-lg">{selectedPlayer.name}</h2>
                   {statsLoading ? (
                     <p className="text-xs text-text-dim mt-0.5">
-                      Fetching market value…
+                      Loading player info…
                     </p>
                   ) : statsError ? (
                     <p className="text-xs text-cap-over mt-0.5">{statsError}</p>
                   ) : playerStats ? (
-                    <div className="flex gap-3 mt-0.5 text-xs text-text-muted">
-                      <span>
-                        Market Value:{" "}
-                        <span className="text-text font-semibold">
-                          {formatSalary(playerStats.fairValue * 1_000_000)}/yr
-                        </span>
-                      </span>
-                      <span className="text-text-dim">|</span>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5 text-xs text-text-muted">
                       <span>{playerStats.ppg} PPG</span>
                       <span className="text-text-dim">|</span>
                       <span>Age {playerStats.age}</span>

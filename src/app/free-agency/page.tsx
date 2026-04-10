@@ -2,9 +2,10 @@
 
 export const dynamic = "force-dynamic";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { usePlayers, useTeamOwners } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
+import { getSupabase } from "@/lib/supabase";
 import {
   Player,
   FREE_AGENCY_TEAM,
@@ -17,7 +18,7 @@ const MAX_VARIANCE = 0.10; // 10%
 
 interface FAOffer {
   id: string;
-  playerId: string; 
+  playerId: string;
   playerName: string;
   userName: string;
   teamName: string;
@@ -25,6 +26,36 @@ interface FAOffer {
   amounts: { [year: number]: number };
   totalValue: number;
   timestamp: number;
+}
+
+interface FAOfferRow {
+  id: string;
+  player_id: string;
+  player_name: string;
+  user_name: string;
+  team_name: string;
+  years: number[];
+  amounts: Record<string, number>;
+  total_value: number;
+  created_at: string;
+}
+
+function rowToOffer(row: FAOfferRow): FAOffer {
+  const amounts: { [year: number]: number } = {};
+  for (const [k, v] of Object.entries(row.amounts)) {
+    amounts[Number(k)] = Number(v);
+  }
+  return {
+    id: row.id,
+    playerId: row.player_id,
+    playerName: row.player_name,
+    userName: row.user_name,
+    teamName: row.team_name,
+    years: row.years,
+    amounts,
+    totalValue: Number(row.total_value),
+    timestamp: new Date(row.created_at).getTime(),
+  };
 }
 
 export default function FreeAgencyPage() {
@@ -42,6 +73,7 @@ export default function FreeAgencyPage() {
   const [showCopyPopup, setShowCopyPopup] = useState(false);
   const [copiedOffer, setCopiedOffer] = useState<FAOffer | null>(null);
   const [offerHistory, setOfferHistory] = useState<FAOffer[]>([]);
+  const [offersLoading, setOffersLoading] = useState(true);
   const [viewingPlayerId, setViewingPlayerId] = useState<string | null>(null);
 
   // --- Password Protection State ---
@@ -50,15 +82,39 @@ export default function FreeAgencyPage() {
   const [playerToClear, setPlayerToClear] = useState<string | null>(null);
   const ADMIN_PASSWORD = "stoplookinginthefilesasshole"; // Change your password here
 
-  useEffect(() => {
-    const saved = localStorage.getItem("faOfferHistory");
-    if (saved) setOfferHistory(JSON.parse(saved));
+  const refreshOffers = useCallback(async () => {
+    const { data, error } = await getSupabase()
+      .from("free_agent_offers")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error("Failed to load free-agent offers:", error);
+      setOffersLoading(false);
+      return;
+    }
+    setOfferHistory((data as FAOfferRow[]).map(rowToOffer));
+    setOffersLoading(false);
   }, []);
 
-  function saveOfferHistory(offers: FAOffer[]) {
-    setOfferHistory(offers);
-    localStorage.setItem("faOfferHistory", JSON.stringify(offers));
-  }
+  useEffect(() => {
+    refreshOffers();
+
+    // Realtime: refresh the list whenever any user inserts or deletes an offer
+    const channel = getSupabase()
+      .channel("free_agent_offers_changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "free_agent_offers" },
+        () => {
+          refreshOffers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      getSupabase().removeChannel(channel);
+    };
+  }, [refreshOffers]);
 
   const myTeamCap = useMemo(() => {
     if (!myOwner) return 0;
@@ -147,7 +203,7 @@ export default function FreeAgencyPage() {
     return errors;
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const currentErrors = getOfferErrors();
     if (currentErrors.length > 0 || !selectedPlayer) return;
 
@@ -156,19 +212,31 @@ export default function FreeAgencyPage() {
     for (const y of offerYears) amounts[y] = isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[y];
     const totalValue = offerYears.reduce((s, y) => s + amounts[y], 0);
 
-    const offer: FAOffer = {
-      id: crypto.randomUUID(),
-      playerId: String(selectedPlayer.id),
-      playerName: selectedPlayer.name,
-      userName: selectedUser,
-      teamName: ownerEntry?.teamName || "",
-      years: [...offerYears],
-      amounts,
-      totalValue,
-      timestamp: Date.now(),
-    };
+    const { data, error } = await getSupabase()
+      .from("free_agent_offers")
+      .insert({
+        player_id: String(selectedPlayer.id),
+        player_name: selectedPlayer.name,
+        user_name: selectedUser,
+        team_name: ownerEntry?.teamName || "",
+        years: [...offerYears],
+        amounts,
+        total_value: totalValue,
+      })
+      .select()
+      .single();
 
-    saveOfferHistory([offer, ...offerHistory]);
+    if (error || !data) {
+      console.error("Failed to submit offer:", error);
+      alert("Failed to submit offer. Please try again.");
+      return;
+    }
+
+    const offer = rowToOffer(data as FAOfferRow);
+    // Optimistic update; realtime subscription will also fire
+    setOfferHistory((prev) =>
+      prev.some((o) => o.id === offer.id) ? prev : [offer, ...prev]
+    );
     setCopiedOffer(offer);
     setShowCopyPopup(true);
 
@@ -182,16 +250,28 @@ export default function FreeAgencyPage() {
     setShowPasswordModal(true);
   }
 
-  function handleConfirmClear() {
-    if (passwordInput === ADMIN_PASSWORD && playerToClear) {
-      saveOfferHistory(offerHistory.filter((o) => o.playerId !== playerToClear));
-      if (viewingPlayerId === playerToClear) setViewingPlayerId(null);
-      setShowPasswordModal(false);
-      setPasswordInput("");
-      setPlayerToClear(null);
-    } else {
+  async function handleConfirmClear() {
+    if (passwordInput !== ADMIN_PASSWORD || !playerToClear) {
       alert("Incorrect Password");
+      return;
     }
+
+    const { error } = await getSupabase()
+      .from("free_agent_offers")
+      .delete()
+      .eq("player_id", playerToClear);
+
+    if (error) {
+      console.error("Failed to clear offers:", error);
+      alert("Failed to clear offers. Please try again.");
+      return;
+    }
+
+    setOfferHistory((prev) => prev.filter((o) => o.playerId !== playerToClear));
+    if (viewingPlayerId === playerToClear) setViewingPlayerId(null);
+    setShowPasswordModal(false);
+    setPasswordInput("");
+    setPlayerToClear(null);
   }
 
   function getOfferCopyText(offer: FAOffer): string {
@@ -201,13 +281,13 @@ export default function FreeAgencyPage() {
 
   const errors = getOfferErrors();
 
-  if (loading) return <div className="flex items-center justify-center h-96 text-text-muted">Loading data...</div>;
+  if (loading || offersLoading) return <div className="flex items-center justify-center h-96 text-text-muted">Loading data...</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <h1 className="text-2xl font-bold mb-6">Free Agency Tracker</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Player List */}
         <div className="lg:col-span-1">
           <div className="bg-surface rounded-xl border border-border overflow-hidden">

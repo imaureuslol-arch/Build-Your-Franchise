@@ -126,11 +126,11 @@ export default function RostersPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Rosters</h1>
-        <div className="flex gap-2 items-center">
-          <div className="relative" ref={searchRef}>
+        <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
+          <div className="relative w-full sm:w-auto" ref={searchRef}>
             <input
               type="text"
               placeholder="Search team, user, or player..."
@@ -140,7 +140,7 @@ export default function RostersPage() {
                 setShowPlayerResults(true);
               }}
               onFocus={() => setShowPlayerResults(true)}
-              className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-primary w-64"
+              className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64"
             />
             {/* Player search dropdown */}
             {showPlayerResults && playerSearchResults.length > 0 && (
@@ -177,7 +177,7 @@ export default function RostersPage() {
         </div>
       </div>
 
-      <div className="flex gap-4 mb-6 text-sm">
+      <div className="flex flex-wrap gap-x-4 gap-y-2 mb-6 text-xs sm:text-sm">
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-cap-under" /> Under $225M
         </span>
@@ -228,8 +228,8 @@ export default function RostersPage() {
             </div>
 
             {selectedTeam === team.team && (
-              <div className="border-t border-border">
-                <table className="w-full text-sm">
+              <div className="border-t border-border overflow-x-auto">
+                <table className="w-full text-sm min-w-[480px]">
                   <thead>
                     <tr className="text-text-dim text-xs">
                       <th className="text-left px-4 py-2 font-medium">Player</th>

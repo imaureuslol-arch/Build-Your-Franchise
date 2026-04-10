@@ -294,14 +294,14 @@ function TradesPage() {
       </div>
 
       <div className="mt-6 flex flex-col items-center gap-4">
-        <div className="flex gap-3">
-          <button onClick={handleValidate} className="px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors">
+        <div className="flex flex-wrap justify-center gap-2 sm:gap-3 w-full">
+          <button onClick={handleValidate} className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors">
             Validate Trade
           </button>
-          <button onClick={handleConfirm} className="px-6 py-2.5 bg-cap-under text-white rounded-lg font-medium hover:opacity-90 transition-colors">
+          <button onClick={handleConfirm} className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-cap-under text-white rounded-lg font-medium hover:opacity-90 transition-colors">
             Confirm Trade
           </button>
-          <button onClick={handleReset} className="px-6 py-2.5 bg-surface-light text-text-muted border border-border rounded-lg font-medium hover:text-text transition-colors">
+          <button onClick={handleReset} className="flex-1 sm:flex-none min-w-[100px] px-4 sm:px-6 py-2.5 bg-surface-light text-text-muted border border-border rounded-lg font-medium hover:text-text transition-colors">
             Reset
           </button>
         </div>
