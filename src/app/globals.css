@@ -29,7 +29,6 @@ body {
   background: var(--color-background);
   color: var(--color-text);
   font-family: var(--font-sans);
-  overflow-x: hidden;
 }
 
 /* Prevent iOS zoom on input focus */

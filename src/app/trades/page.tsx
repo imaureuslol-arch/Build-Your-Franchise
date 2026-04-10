@@ -218,10 +218,10 @@ function TradesPage() {
   }
 
   return (
-    <div className="max-w-full mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-full mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Trade Machine</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {/* Clear History Button */}
           <button
             onClick={() => setShowPasswordModal(true)}
