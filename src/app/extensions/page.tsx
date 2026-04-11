@@ -66,7 +66,7 @@ export default function ExtensionsPage() {
       {
         role: "player",
         content:
-          "Hey, I'm open to discussing an extension with you. I've got a number in mind, but let's see what you've got for me. You have 3 offers to make it work. Careful though—insulting offers cost double.",
+          "Hey, I'm open to discussing an extension with you. I've got a number in mind, but let's see what you've got for me. Don't waste my time, I don't have all day.",
       },
     ]);
     setOffersUsed(0);
@@ -173,7 +173,7 @@ export default function ExtensionsPage() {
     // Create User Message with penalty indicator
     const userMsg: ChatMessage = {
       role: "user",
-      content: `Offer #${offersUsed + 1}${isInsulting ? " (INSULTING)" : ""}: ${selectedYears.length} ${yearLabel} — ${yearDetails}`,
+      content: `Offer #${offersUsed + 1}${isInsulting ? " (PLAYER INSULTED. 2 OFFERS USED)" : ""}: ${selectedYears.length} ${yearLabel} — ${yearDetails}`,
       offer: { years: selectedYears, amounts },
     };
 
@@ -262,14 +262,14 @@ export default function ExtensionsPage() {
     const remainingOffers = Math.max(0, 3 - offerNum);
     const offerText =
       remainingOffers === 1
-        ? "1 offer remaining"
+        ? "This is your last chance."
         : `${remainingOffers} offers remaining`;
 
     if (ratio >= 1.15) // Slightly lowered threshold for "Hell yeah"
       return {
         message: {
           role: "player",
-          content: "HAHA! Hell yeah man! You got a damn deal!",
+          content: "YOU SERIOUS?! Hell yeah dawg! You got a deal!",
         },
         accepted: true,
       };
