@@ -48,8 +48,8 @@ function calcFairValue(age: number, ppg: number, avgGamesPlayed: number): number
   const bonusTerm = 1 + 0.25 / (0.4 + Math.exp(-1 * (ppg - 30)));
 
   const raw =
-    ppgTerm * ppgFactor * gamesFactor * ageFactor * ageDecline * bonusTerm * 0.5;
-  return Math.min(65, raw); // millions
+    ppgTerm * ppgFactor * gamesFactor * ageFactor * ageDecline * bonusTerm * 0.6;
+  return Math.min(80, raw); // millions
 }
 
 export async function GET(request: NextRequest) {
