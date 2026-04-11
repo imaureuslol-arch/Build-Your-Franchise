@@ -1,12 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const BDL_BASE = "https://api.balldontlie.io/v1";
-
-function bdlHeaders() {
-  return { Authorization: process.env.BDL_API_KEY! };
-}
-
 function getSupabaseServer() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key =
@@ -15,20 +9,17 @@ function getSupabaseServer() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-const SUFFIXES = /\s+(jr\.?|sr\.?|ii|iii|iv)$/i;
-
-/** Split "LeBron James Jr." → { first: "LeBron", last: "James" } */
-function splitName(fullName: string): { first: string; last: string } {
-  const cleaned = fullName.replace(SUFFIXES, "").trim();
-  const parts = cleaned.split(/\s+/);
-  if (parts.length === 1) return { first: parts[0], last: "" };
-  return { first: parts[0], last: parts.slice(1).join(" ") };
-}
-
-function ageFromDraftYear(draftYear: number | null): number | null {
-  if (!draftYear) return null;
-  // Most players enter the league around age 20
-  return 2026 - draftYear + 20;
+/** Age in whole years from an ISO date string (YYYY-MM-DD). */
+function ageFromBirthdate(birthdate: string): number | null {
+  const dob = new Date(birthdate);
+  if (Number.isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - dob.getUTCFullYear();
+  const m = now.getUTCMonth() - dob.getUTCMonth();
+  if (m < 0 || (m === 0 && now.getUTCDate() < dob.getUTCDate())) {
+    age--;
+  }
+  return age;
 }
 
 function calcFairValue(age: number, ppg: number, avgGamesPlayed: number): number {
@@ -65,11 +56,10 @@ export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name");
   if (!name) return Response.json({ error: "name required" }, { status: 400 });
 
-  // ── 1. Read PPG + avg_gp from Supabase ──
   const supabase = getSupabaseServer();
   const { data: dbPlayer, error: dbError } = await supabase
     .from("players")
-    .select("ppg, avg_gp")
+    .select("ppg, avg_gp, birthdate")
     .eq("name", name)
     .maybeSingle();
 
@@ -82,6 +72,7 @@ export async function GET(request: NextRequest) {
 
   const ppg: number | null = dbPlayer?.ppg ?? null;
   const avgGamesPlayed: number | null = dbPlayer?.avg_gp ?? null;
+  const birthdate: string | null = dbPlayer?.birthdate ?? null;
 
   if (ppg == null || avgGamesPlayed == null) {
     return Response.json(
@@ -90,39 +81,21 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // ── 2. Look up age via BDL ──
-  let age: number | null = null;
-  try {
-    const { first, last } = splitName(name);
-
-    // Use first_name + last_name params (multi-word ?search= returns empty)
-    const params = new URLSearchParams({ per_page: "5" });
-    if (first) params.set("first_name", first);
-    if (last) params.set("last_name", last);
-
-    const searchRes = await fetch(`${BDL_BASE}/players?${params}`, {
-      headers: bdlHeaders(),
-    });
-
-    if (searchRes.ok) {
-      const searchData = await searchRes.json();
-      const player = searchData.data?.[0];
-      if (player) {
-        age = ageFromDraftYear(player.draft_year);
-      }
-    }
-  } catch {
-    // BDL down — age stays null
-  }
-
-  if (age == null) {
+  if (!birthdate) {
     return Response.json(
-      { error: "Could not determine player age — contact the commissioner." },
+      { error: "Birthdate missing for this player — contact the commissioner to update." },
       { status: 404 }
     );
   }
 
-  // ── 3. Calculate fair value ──
+  const age = ageFromBirthdate(birthdate);
+  if (age == null) {
+    return Response.json(
+      { error: "Invalid birthdate stored for this player — contact the commissioner." },
+      { status: 500 }
+    );
+  }
+
   const fairValueMillions = calcFairValue(age, ppg, avgGamesPlayed);
 
   return Response.json({

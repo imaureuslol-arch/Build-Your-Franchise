@@ -14,7 +14,7 @@
 //      (and ideally SUPABASE_SERVICE_ROLE_KEY=... for writes)
 //
 //   3. Run from the project root:
-//        node scripts/populate-stats.mjs
+//        node scripts/populate-stats.mjs 
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
@@ -102,12 +102,13 @@ function fantasyPerGame(row) {
 }
 
 // ── Fetch career season totals for one player ──
-// Returns { ppg, avg_gp } where ppg = fantasy PPG from the 2024-25 season
-// specifically (since the current season isn't over yet) and avg_gp = average
-// games played across the last 3 completed seasons.
+// Returns { ppg, avg_gp, birthdate } where ppg = fantasy PPG from the 2024-25
+// season (current season isn't complete), avg_gp = average games played across
+// the last 3 completed seasons, and birthdate is an ISO date from the NBA's
+// CommonPlayerInfo endpoint exposed by the Postgame Stats API as /playerInfo.
 const FPPG_SEASON = "2024-25";
 
-async function getStatsForPlayer(token, playerName) {
+async function getCareerStats(token, playerName) {
   const res = await fetch(`${API_BASE}/api/nba/player/careerSeasonTotal`, {
     method: "POST",
     headers: {
@@ -118,7 +119,7 @@ async function getStatsForPlayer(token, playerName) {
   });
 
   if (!res.ok) {
-    throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    throw new Error(`careerSeasonTotal ${res.status}: ${(await res.text()).slice(0, 120)}`);
   }
 
   const rows = await res.json();
@@ -160,6 +161,36 @@ async function getStatsForPlayer(token, playerName) {
   };
 }
 
+async function getPlayerInfo(token, playerName) {
+  const res = await fetch(`${API_BASE}/api/nba/player/playerInfo`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ playerName }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`playerInfo ${res.status}: ${(await res.text()).slice(0, 120)}`);
+  }
+
+  const info = await res.json();
+  if (!info || !info.birthdate) {
+    throw new Error("no birthdate from playerInfo");
+  }
+  return { birthdate: info.birthdate };
+}
+
+async function getStatsForPlayer(token, playerName) {
+  // Sequential, not parallel — both calls go to the same upstream that wraps
+  // stats.nba.com, which gets cranky when hit too fast.
+  const career = await getCareerStats(token, playerName);
+  await sleep(DELAY_MS);
+  const info = await getPlayerInfo(token, playerName);
+  return { ...career, birthdate: info.birthdate };
+}
+
 // ── Main ──
 async function main() {
   console.log("Logging in to Postgame Stats API…");
@@ -188,12 +219,18 @@ async function main() {
 
       const { error: updateErr } = await supabase
         .from("players")
-        .update({ ppg: stats.ppg, avg_gp: stats.avg_gp })
+        .update({
+          ppg: stats.ppg,
+          avg_gp: stats.avg_gp,
+          birthdate: stats.birthdate,
+        })
         .eq("id", p.id);
 
       if (updateErr) throw updateErr;
 
-      console.log(`${tag}  →  ${stats.ppg} FPPG / ${stats.avg_gp} GP`);
+      console.log(
+        `${tag}  →  ${stats.ppg} FPPG / ${stats.avg_gp} GP / DOB ${stats.birthdate}`
+      );
       success++;
     } catch (err) {
       console.warn(`${tag}  ✗  ${err.message}`);
