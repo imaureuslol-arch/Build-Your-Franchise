@@ -66,7 +66,7 @@ export default function ExtensionsPage() {
       {
         role: "player",
         content:
-          "Hey, I'm open to discussing an extension with you. I've got a number in mind, but let's see what you've got for me. You have 3 offers to make it work.",
+          "Hey, I'm open to discussing an extension with you. I've got a number in mind, but let's see what you've got for me. You have 3 offers to make it work. Careful though—insulting offers cost double.",
       },
     ]);
     setOffersUsed(0);
@@ -131,6 +131,7 @@ export default function ExtensionsPage() {
     );
     const currentAvg = currentTotal / selectedYears.length;
 
+    // 1. Validation: Prevent lowering offers
     if (offersUsed > 0 && currentAvg < lastOfferAvg) {
       setValidationError(
         `You can't lower your offer! Your last offer averaged ${formatSalary(lastOfferAvg)}.`
@@ -138,6 +139,7 @@ export default function ExtensionsPage() {
       return;
     }
 
+    // 2. Validation: Salary variance (10% rule)
     const sortedYears = [...selectedYears].sort((a, b) => a - b);
     for (let i = 1; i < sortedYears.length; i++) {
       const prevYear = sortedYears[i - 1];
@@ -152,7 +154,13 @@ export default function ExtensionsPage() {
     }
 
     setValidationError(null);
-    const offerNum = offersUsed + 1;
+
+    // 3. Logic for "Insulting" offers and Attempt Penalties
+    const currentRatio = currentAvg / fairValue;
+    const isInsulting = currentRatio < 0.4;
+    const attemptCost = isInsulting ? 2 : 1;
+    const newOffersUsedTotal = offersUsed + attemptCost;
+
     const amounts: { [year: number]: number } = {};
     for (const y of selectedYears) amounts[y] = yearAmounts[y];
 
@@ -162,9 +170,10 @@ export default function ExtensionsPage() {
       .map((y) => `${y}: ${formatSalary(amounts[y])}`)
       .join(", ");
 
+    // Create User Message with penalty indicator
     const userMsg: ChatMessage = {
       role: "user",
-      content: `Offer #${offerNum}: ${selectedYears.length} ${yearLabel} — ${yearDetails}`,
+      content: `Offer #${offersUsed + 1}${isInsulting ? " (INSULTING)" : ""}: ${selectedYears.length} ${yearLabel} — ${yearDetails}`,
       offer: { years: selectedYears, amounts },
     };
 
@@ -172,15 +181,15 @@ export default function ExtensionsPage() {
       fairValue,
       amounts,
       selectedYears,
-      offerNum
+      newOffersUsedTotal // Pass the penalized total
     );
 
-    const currentRatio = currentAvg / fairValue;
     const updatedBestRatio = Math.max(bestRatioSoFar, currentRatio);
     setBestRatioSoFar(updatedBestRatio);
     setLastOfferAvg(currentAvg);
 
-    if (!playerResponse.accepted && offerNum >= 3) {
+    // 4. Handle Ultimatum vs Response
+    if (!playerResponse.accepted && newOffersUsedTotal >= 3) {
       const isSoften = updatedBestRatio >= 0.8;
       const multiplier = isSoften ? 1.1 : 1.5;
       const demandVal = fairValue * multiplier;
@@ -190,9 +199,11 @@ export default function ExtensionsPage() {
 
       const ultimatumMsg: ChatMessage = {
         role: "player",
-        content: isSoften
+        content: isInsulting
+          ? `That offer is a slap in the face. You're wasting my time. My final demand is ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel}. Take it or I'm hitting the market.`
+          : isSoften
           ? `Look, your last offer was close, and I'd like to stay here. Give me ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel} and I'll sign right now.`
-          : `Alright. I'm done. Pay me what I'm worth or I'm leaving. My final demand is ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel}. Take it or leave it.`,
+          : `Alright. I'm done playing games. Pay me what I'm worth or I'm leaving. My final demand is ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel}.`,
       };
 
       setChat((prev) => [...prev, userMsg, ultimatumMsg]);
@@ -207,7 +218,7 @@ export default function ExtensionsPage() {
       }
     }
 
-    setOffersUsed(offerNum);
+    setOffersUsed(newOffersUsedTotal);
   }
 
   function handleFinalDecision(accepted: boolean) {
@@ -232,8 +243,7 @@ export default function ExtensionsPage() {
         ...prev,
         {
           role: "player",
-          content:
-            "This is the kinda mistake that gets you fired. Don't call me again.",
+          content: "This is the kinda mistake that gets you fired. Don't call me again.",
         },
       ]);
     }
@@ -249,13 +259,13 @@ export default function ExtensionsPage() {
       Object.values(amounts).reduce((s, v) => s + v, 0) / years.length;
     const ratio = fairValue > 0 ? avgPerYear / fairValue : 1;
 
-    const remainingOffers = 3 - offerNum;
+    const remainingOffers = Math.max(0, 3 - offerNum);
     const offerText =
       remainingOffers === 1
         ? "1 offer remaining"
         : `${remainingOffers} offers remaining`;
 
-    if (ratio >= 1.25)
+    if (ratio >= 1.15) // Slightly lowered threshold for "Hell yeah"
       return {
         message: {
           role: "player",
@@ -276,21 +286,18 @@ export default function ExtensionsPage() {
     if (ratio >= 0.9)
       responseContent = `This is pretty fair. Give me a small bump and you've got a deal. (${offerText})`;
     else if (ratio >= 0.8)
-      responseContent = `This is a bit too low for me, but we're close. (${offerText})`;
+      responseContent = `This is a bit too low, but we're close. (${offerText})`;
     else if (ratio >= 0.7)
       responseContent = `I like playing here but I'm gonna need more. (${offerText})`;
     else if (ratio >= 0.6)
-      responseContent = `I've got much better offers from other teams. (${offerText})`;
-    else if (ratio >= 0.5)
       responseContent = `This is a low-ball offer, I know what I'm worth. (${offerText})`;
+    else if (ratio >= 0.5)
+      responseContent = `You're crazy man. Let me tell you, this is disrespectful. (${offerText})`;
     else if (ratio >= 0.4)
-      responseContent = `Try again with a real offer. (${offerText})`;
-    else if (ratio >= 0.3)
-      responseContent = `This is insultingly low. (${offerText})`;
-    else if (ratio >= 0.2)
-      responseContent = `You're wasting my time. (${offerText})`;
+      responseContent = `Try again with a real offer. Or don't, I'll go somewhere I'm respected. (${offerText})`;
     else
-      responseContent = `Are you serious? I'll walk out of here right now. (${offerText})`;
+      // For anything < 0.4, since they lose 2 attempts, the message should sound severe
+      responseContent = `Is this a joke? That's an insulting offer. You're wasting my time. (${offerText})`;
 
     return {
       message: { role: "player", content: responseContent },
@@ -318,7 +325,6 @@ export default function ExtensionsPage() {
       </div>
     );
 
-  // Whether the negotiation panel can accept offers
   const canNegotiate = !!playerStats && !statsError && !statsLoading;
 
   return (
@@ -331,7 +337,6 @@ export default function ExtensionsPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Player List */}
         <div className="lg:col-span-1">
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <div className="p-4 border-b border-border">
@@ -362,7 +367,6 @@ export default function ExtensionsPage() {
           </div>
         </div>
 
-        {/* Right: Negotiation Panel */}
         <div className="lg:col-span-2">
           {!selectedPlayer ? (
             <div className="bg-surface rounded-xl border border-border flex items-center justify-center h-96 text-text-dim">
@@ -374,9 +378,7 @@ export default function ExtensionsPage() {
                 <div>
                   <h2 className="font-bold text-lg">{selectedPlayer.name}</h2>
                   {statsLoading ? (
-                    <p className="text-xs text-text-dim mt-0.5">
-                      Loading player info…
-                    </p>
+                    <p className="text-xs text-text-dim mt-0.5">Loading player info…</p>
                   ) : statsError ? (
                     <p className="text-xs text-cap-over mt-0.5">{statsError}</p>
                   ) : playerStats ? (
@@ -391,24 +393,11 @@ export default function ExtensionsPage() {
                 </div>
                 {!negotiationDone && (
                   <div className="text-sm text-text-dim">
-                    Offers: {offersUsed}/3
+                    Offers: {Math.min(offersUsed, 3)}/3
                   </div>
                 )}
               </div>
 
-              {/* Stats error — blocks negotiation */}
-              {statsError && !statsLoading && (
-                <div className="flex-1 flex items-center justify-center p-8">
-                  <div className="text-center">
-                    <p className="text-cap-over font-bold text-sm mb-2">
-                      Cannot Negotiate
-                    </p>
-                    <p className="text-text-muted text-sm">{statsError}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Chat Window — only when stats are available */}
               {!statsError && (
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {chat.map((msg, i) => (
@@ -430,7 +419,6 @@ export default function ExtensionsPage() {
                 </div>
               )}
 
-              {/* Final Ultimatum Action */}
               {isFinalDemand && (
                 <div className="border-t-2 border-primary/30 p-4 bg-primary/5">
                   <p className="text-sm font-bold text-center mb-3 text-primary uppercase tracking-tighter">
@@ -453,34 +441,31 @@ export default function ExtensionsPage() {
                 </div>
               )}
 
-              {/* Negotiation Inputs — only when stats loaded successfully */}
               {canNegotiate && !negotiationDone && !isFinalDemand && (
                 <div className="border-t border-border p-4">
                   <div className="mb-3">
                     <div className="flex gap-2 mb-4">
-                      {getExtensionYears(selectedPlayer).map(
-                        (year, idx, arr) => {
-                          const isSelected = selectedYears.includes(year);
-                          const isDisabled =
-                            idx > 0 &&
-                            !selectedYears.includes(arr[idx - 1]) &&
-                            !isSelected;
-                          return (
-                            <button
-                              key={year}
-                              disabled={isDisabled}
-                              onClick={() => toggleYear(year)}
-                              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                                isSelected
-                                  ? "bg-primary text-white"
-                                  : "bg-surface-light text-text-muted border border-border"
-                              } ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
-                            >
-                              {year}
-                            </button>
-                          );
-                        }
-                      )}
+                      {getExtensionYears(selectedPlayer).map((year, idx, arr) => {
+                        const isSelected = selectedYears.includes(year);
+                        const isDisabled =
+                          idx > 0 &&
+                          !selectedYears.includes(arr[idx - 1]) &&
+                          !isSelected;
+                        return (
+                          <button
+                            key={year}
+                            disabled={isDisabled}
+                            onClick={() => toggleYear(year)}
+                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                              isSelected
+                                ? "bg-primary text-white"
+                                : "bg-surface-light text-text-muted border border-border"
+                            } ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
+                          >
+                            {year}
+                          </button>
+                        );
+                      })}
                     </div>
                     {selectedYears.length > 0 &&
                       selectedYears.sort().map((year) => (
@@ -519,26 +504,19 @@ export default function ExtensionsPage() {
                     disabled={selectedYears.length === 0}
                     className="w-full py-2.5 bg-primary text-white rounded-lg font-medium disabled:opacity-40"
                   >
-                    Submit Offer ({offersUsed + 1}/3)
+                    Submit Offer ({Math.min(offersUsed + 1, 3)}/3)
                   </button>
                 </div>
               )}
 
-              {/* End of Negotiation */}
               {negotiationDone && (
                 <div className="border-t border-border p-4 text-center">
-                  <p
-                    className={`font-bold mb-2 ${agreementReached ? "text-cap-under" : "text-cap-over"}`}
-                  >
-                    {agreementReached
-                      ? "Agreement Reached!"
-                      : "Negotiations Failed"}
+                  <p className={`font-bold mb-2 ${agreementReached ? "text-cap-under" : "text-cap-over"}`}>
+                    {agreementReached ? "Agreement Reached!" : "Negotiations Failed"}
                   </p>
                   <button
                     onClick={() =>
-                      agreementReached
-                        ? setShowCopyPopup(true)
-                        : startNegotiation(selectedPlayer)
+                      agreementReached ? setShowCopyPopup(true) : startNegotiation(selectedPlayer)
                     }
                     className={`px-4 py-2 rounded-lg text-sm font-medium ${
                       agreementReached
@@ -555,19 +533,16 @@ export default function ExtensionsPage() {
         </div>
       </div>
 
-      {/* Copy Popup */}
       {showCopyPopup && finalOffer && selectedPlayer && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-xl p-6 max-w-md w-full border border-border">
-            <h3 className="text-lg font-bold mb-4 text-cap-under">
-              Extension Signed
-            </h3>
-            <pre className="bg-surface-light rounded-lg p-4 text-sm font-mono whitespace-pre-wrap mb-4">{getCopyText()}</pre>
+            <h3 className="text-lg font-bold mb-4 text-cap-under">Extension Signed</h3>
+            <pre className="bg-surface-light rounded-lg p-4 text-sm font-mono whitespace-pre-wrap mb-4">
+              {getCopyText()}
+            </pre>
             <div className="flex gap-3">
               <button
-                onClick={() =>
-                  navigator.clipboard.writeText(getCopyText())
-                }
+                onClick={() => navigator.clipboard.writeText(getCopyText())}
                 className="flex-1 py-2.5 bg-primary text-white rounded-lg font-medium"
               >
                 Copy
