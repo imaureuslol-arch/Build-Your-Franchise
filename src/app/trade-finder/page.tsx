@@ -142,6 +142,9 @@ export default function TradeFinderPage() {
         const totalFV = combo.reduce((s, p) => s + (playerValues[p.id]?.fairValue ?? 0), 0);
         const diff = Math.abs(totalFV - userPackageFV);
 
+        // Only show packages within 25% of user's fair value
+        if (userPackageFV > 0 && diff > userPackageFV * 0.25) continue;
+
         packages.push({
           team,
           players: combo.map((p) => ({
