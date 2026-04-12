@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
 import {
@@ -20,10 +20,44 @@ interface PlayerStats {
   avgGamesPlayed: number;
 }
 
+interface ExtensionRecord {
+  id: string;
+  player_id: number;
+  player_name: string;
+  team_name: string;
+  user_name: string;
+  years: number[];
+  amounts: Record<string, number>;
+  total_value: number;
+  accepted: boolean;
+  created_at: string;
+}
+
 export default function ExtensionsPage() {
   const { players: allPlayers, loading: playersLoading } = usePlayers();
   const { teamName, owner, isLoading: teamLoading } = useUserTeam();
-  const loading = playersLoading || teamLoading;
+
+  const [extensions, setExtensions] = useState<ExtensionRecord[]>([]);
+  const [extensionsLoading, setExtensionsLoading] = useState(true);
+
+  const fetchExtensions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/extensions");
+      const data = await res.json();
+      if (res.ok) setExtensions(data.extensions ?? []);
+    } catch {
+      /* silent — non-blocking */
+    } finally {
+      setExtensionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchExtensions();
+  }, [fetchExtensions]);
+
+  const loading = playersLoading || teamLoading || extensionsLoading;
+  const lockedPlayerIds = new Set(extensions.map((e) => e.player_id));
 
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
@@ -49,13 +83,45 @@ export default function ExtensionsPage() {
   const [lastOfferAvg, setLastOfferAvg] = useState<number>(0);
 
   const eligiblePlayers = allPlayers.filter(
-    (p) => isEligibleForExtension(p) && p.team === teamName
+    (p) =>
+      isEligibleForExtension(p) &&
+      p.team === teamName &&
+      !lockedPlayerIds.has(p.id)
   );
   const filteredPlayers = searchQuery
     ? eligiblePlayers.filter((p) =>
         p.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : eligiblePlayers;
+
+  async function saveExtension(
+    player: Player,
+    years: number[],
+    amounts: { [year: number]: number },
+    accepted: boolean
+  ) {
+    const total = Object.values(amounts).reduce((s, v) => s + v, 0);
+    try {
+      await fetch("/api/extensions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          player_id: player.id,
+          player_name: player.name,
+          team_name: player.team,
+          user_name: owner?.user_name ?? teamName,
+          years,
+          amounts,
+          total_value: total,
+          accepted,
+        }),
+      });
+      // Refresh the locked list so the player disappears from sidebar
+      fetchExtensions();
+    } catch {
+      /* best-effort — the copy text is still the record */
+    }
+  }
 
   async function startNegotiation(player: Player) {
     setSelectedPlayer(player);
@@ -215,6 +281,7 @@ export default function ExtensionsPage() {
         setAgreementReached(true);
         setFinalOffer({ years: selectedYears, amounts });
         setShowCopyPopup(true);
+        saveExtension(selectedPlayer, selectedYears, amounts, true);
       }
     }
 
@@ -236,6 +303,7 @@ export default function ExtensionsPage() {
         ...prev,
         { role: "player", content: "Smart move. I'll see you at training camp." },
       ]);
+      saveExtension(selectedPlayer, selectedYears, amounts, true);
     } else {
       setNegotiationDone(true);
       setAgreementReached(false);
@@ -246,6 +314,10 @@ export default function ExtensionsPage() {
           content: "This is the kinda mistake that gets you fired. Don't call me again.",
         },
       ]);
+      // Declined ultimatum — lock the player so they can't renegotiate
+      const declinedAmounts: { [year: number]: number } = {};
+      selectedYears.forEach((y) => (declinedAmounts[y] = 0));
+      saveExtension(selectedPlayer, selectedYears, declinedAmounts, false);
     }
   }
 
@@ -265,15 +337,15 @@ export default function ExtensionsPage() {
         ? "This is your last chance."
         : `${remainingOffers} offers remaining`;
 
-    if (ratio >= 1.15) // Slightly lowered threshold for "Hell yeah"
+    if (ratio >= 1.3) // Slightly lowered threshold for "Hell yeah"
       return {
         message: {
           role: "player",
-          content: "YOU SERIOUS?! Hell yeah dawg! You got a deal!",
+          content: "YOU SERIOUS?! Hell yeah! You got a deal!",
         },
         accepted: true,
       };
-    if (ratio >= 0.98)
+    if (ratio >= 0.95)
       return {
         message: {
           role: "player",
@@ -285,6 +357,8 @@ export default function ExtensionsPage() {
     let responseContent = "";
     if (ratio >= 0.9)
       responseContent = `This is pretty fair. Give me a small bump and you've got a deal. (${offerText})`;
+    else if (ratio >= 0.85)
+    responseContent = `I love the city, but business is business. I’m gonna need a little more. (${offerText})`;
     else if (ratio >= 0.8)
       responseContent = `This is a bit too low, but we're close. (${offerText})`;
     else if (ratio >= 0.7)
@@ -293,11 +367,13 @@ export default function ExtensionsPage() {
       responseContent = `This is a low-ball offer, I know what I'm worth. (${offerText})`;
     else if (ratio >= 0.5)
       responseContent = `You're crazy man. Let me tell you, this is disrespectful. (${offerText})`;
-    else if (ratio >= 0.4)
+    else if (ratio >= 0.45)
       responseContent = `Try again with a real offer. Or don't, I'll go somewhere I'm respected. (${offerText})`;
+    else if (ratio >= 0.4)
+      responseContent = `Is this a joke? I feel like I'm being pranked right now. Check the stats and try again. (${offerText})`;
     else
       // For anything < 0.4, since they lose 2 attempts, the message should sound severe
-      responseContent = `Is this a joke? That's an insulting offer. You're wasting my time. (${offerText})`;
+      responseContent = `Is this a joke? Man, stop wasting my time or I'll walk out of here RIGHT NOW. (${offerText})`;
 
     return {
       message: { role: "player", content: responseContent },
