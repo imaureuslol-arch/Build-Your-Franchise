@@ -32,7 +32,9 @@ export default function TeamTradeColumn({
   const inSalary = playersIn.reduce((s, p) => s + (p.contract_27 || 0), 0);
   // Retained salary stays on this team as dead cap; incoming retained = discount from other teams
   const newCap = currentCap - outSalary + retainedSalary + inSalary - incomingRetained;
-  const maxRetention = Math.floor(outSalary * 0.25);
+  // Retention only applies to real player salary, not Dead Cap
+  const realOutSalary = playersOut.filter((p) => !isDeadCap(p)).reduce((s, p) => s + (p.contract_27 || 0), 0);
+  const maxRetention = Math.floor(realOutSalary * 0.25);
 
   const capColors = { under: "text-cap-under", yellow: "text-cap-yellow", over: "text-cap-over" };
   const availablePlayers = teamPlayers

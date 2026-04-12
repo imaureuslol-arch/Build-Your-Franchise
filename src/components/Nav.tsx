@@ -9,6 +9,7 @@ const links = [
   { href: "/", label: "Home" },
   { href: "/rosters", label: "Rosters" },
   { href: "/trades", label: "Trade Machine" },
+  { href: "/trade-finder", label: "Trade Finder" },
   { href: "/extensions", label: "Extensions" },
   { href: "/free-agency", label: "Free Agency" },
 ];
