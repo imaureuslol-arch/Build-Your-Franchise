@@ -18,6 +18,7 @@ import TradeSidebar from "@/components/TradeSidebar";
 interface TradeSlot {
   team: string;
   playersOut: Player[];
+  retainedSalary: number;
 }
 
 export default function TradesPageWrapper() {
@@ -32,8 +33,8 @@ function TradesPage() {
   const { players: allPlayers, loading } = usePlayers();
   const searchParams = useSearchParams();
   const [slots, setSlots] = useState<TradeSlot[]>([
-    { team: "", playersOut: [] },
-    { team: "", playersOut: [] },
+    { team: "", playersOut: [], retainedSalary: 0 },
+    { team: "", playersOut: [], retainedSalary: 0 },
   ]);
   const [validationResult, setValidationResult] = useState<{
     valid: boolean;
@@ -59,7 +60,7 @@ function TradesPage() {
       setSlots((prev) => {
         if (prev[0].team === teamParam) return prev;
         const next = [...prev];
-        next[0] = { team: teamParam, playersOut: [] };
+        next[0] = { team: teamParam, playersOut: [], retainedSalary: 0 };
         return next;
       });
     }
@@ -104,7 +105,7 @@ function TradesPage() {
 
   function addTeam() {
     if (slots.length < 4) {
-      setSlots((prev) => [...prev, { team: "", playersOut: [] }]);
+      setSlots((prev) => [...prev, { team: "", playersOut: [], retainedSalary: 0 }]);
     }
   }
 
@@ -142,14 +143,40 @@ function TradesPage() {
 
   function handleRemovePlayerOut(slotIndex: number, player: Player) {
     const slot = slots[slotIndex];
+    const remaining = slot.playersOut.filter((p) => p.name !== player.name);
+    const newOutTotal = remaining.reduce((s, p) => s + (p.contract_27 || 0), 0);
+    const maxRetained = Math.floor(newOutTotal * 0.25);
     updateSlot(slotIndex, {
-      playersOut: slot.playersOut.filter((p) => p.name !== player.name),
+      playersOut: remaining,
+      retainedSalary: Math.min(slot.retainedSalary, maxRetained),
     });
     setDestinationMap((prev) => {
       const next = { ...prev };
       delete next[`${slot.team}:${player.name}`];
       return next;
     });
+  }
+
+  /** Sum of salary retained by OTHER teams on players coming INTO this team */
+  function getIncomingRetained(teamName: string): number {
+    if (!teamName) return 0;
+    let total = 0;
+    for (const slot of slots) {
+      if (slot.team === teamName || !slot.team || slot.retainedSalary === 0) continue;
+      // Check if any of this slot's outgoing players are destined for teamName
+      const outToThisTeam = slot.playersOut.filter(
+        (p) => destinationMap[`${slot.team}:${p.name}`] === teamName
+      );
+      if (outToThisTeam.length > 0) {
+        // Distribute retained salary proportionally across all outgoing players
+        const slotOutTotal = slot.playersOut.reduce((s, p) => s + (p.contract_27 || 0), 0);
+        if (slotOutTotal > 0) {
+          const toThisTeamSalary = outToThisTeam.reduce((s, p) => s + (p.contract_27 || 0), 0);
+          total += Math.round(slot.retainedSalary * (toThisTeamSalary / slotOutTotal));
+        }
+      }
+    }
+    return total;
   }
 
   function buildTradeTeams(): TradeTeam[] {
@@ -159,6 +186,8 @@ function TradesPage() {
         team: slot.team,
         playersOut: slot.playersOut,
         playersIn: getPlayersIn(slot.team),
+        retainedSalary: slot.retainedSalary,
+        incomingRetained: getIncomingRetained(slot.team),
       }));
   }
 
@@ -185,13 +214,13 @@ function TradesPage() {
     localStorage.setItem("confirmedTrades", JSON.stringify(updated));
     setSidebarOpen(true);
 
-    setSlots([{ team: "", playersOut: [] }, { team: "", playersOut: [] }]);
+    setSlots([{ team: "", playersOut: [], retainedSalary: 0 }, { team: "", playersOut: [], retainedSalary: 0 }]);
     setDestinationMap({});
     setValidationResult(null);
   }
 
   function handleReset() {
-    setSlots([{ team: "", playersOut: [] }, { team: "", playersOut: [] }]);
+    setSlots([{ team: "", playersOut: [], retainedSalary: 0 }, { team: "", playersOut: [], retainedSalary: 0 }]);
     setDestinationMap({});
     setValidationResult(null);
   }
@@ -266,6 +295,8 @@ function TradesPage() {
                 playersIn={getPlayersIn(slot.team)}
                 otherTeamsInTrade={otherTeams}
                 destinationMap={destinationMap}
+                retainedSalary={slot.retainedSalary}
+                incomingRetained={getIncomingRetained(slot.team)}
                 onTeamChange={(team) => {
                   const oldTeam = slot.team;
                   setDestinationMap((prev) => {
@@ -275,7 +306,7 @@ function TradesPage() {
                     }
                     return next;
                   });
-                  updateSlot(i, { team, playersOut: [] });
+                  updateSlot(i, { team, playersOut: [], retainedSalary: 0 });
                 }}
                 onAddPlayerOut={(p) => handleAddPlayerOut(i, p)}
                 onRemovePlayerOut={(p) => handleRemovePlayerOut(i, p)}
@@ -285,6 +316,7 @@ function TradesPage() {
                     [`${slot.team}:${playerName}`]: destTeam,
                   }));
                 }}
+                onRetainedChange={(amount) => updateSlot(i, { retainedSalary: amount })}
                 onRemove={() => removeTeam(i)}
                 canRemove={slots.length > 2}
               />

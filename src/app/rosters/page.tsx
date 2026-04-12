@@ -10,6 +10,8 @@ import {
   TeamSummary,
   SALARY_YEARS,
   FREE_AGENCY_TEAM,
+  DEAD_CAP_NAME,
+  isDeadCap,
   getTeamTotalCap,
   getCapStatus,
   formatSalary,
@@ -54,17 +56,21 @@ export default function RostersPage() {
     return Array.from(teamMap.entries())
       .map(([team, teamPlayers]) => {
         const owner = owners.get(team);
-        const totalCap = getTeamTotalCap(teamPlayers);
+        const realPlayers = teamPlayers.filter((p) => !isDeadCap(p));
+        const deadCapPlayer = teamPlayers.find((p) => isDeadCap(p));
+        const deadCapHit = deadCapPlayer?.contract_27 ?? 0;
+        const totalCap = getTeamTotalCap(teamPlayers); // includes dead cap
         return {
           team,
           userName: owner?.user_name || "",
           conference: owner?.conference || "",
-          players: teamPlayers.sort(
+          players: realPlayers.sort(
             (a, b) => (b.contract_27 || 0) - (a.contract_27 || 0)
           ),
           totalCap,
           capStatus: getCapStatus(totalCap),
-        } as TeamSummary;
+          deadCapHit,
+        };
       })
       .sort((a, b) => a.team.localeCompare(b.team));
   }, [rosterPlayers, owners]);
@@ -76,7 +82,7 @@ export default function RostersPage() {
     if (!searchQuery || searchQuery.length < 2) return [];
     const q = searchQuery.toLowerCase();
     return rosterPlayers
-      .filter((p) => p.name.toLowerCase().includes(q))
+      .filter((p) => p.name.toLowerCase().includes(q) && !isDeadCap(p))
       .slice(0, 8);
   }, [searchQuery, rosterPlayers]);
 
@@ -221,9 +227,16 @@ export default function RostersPage() {
                 <span className="text-text-muted text-sm">
                   {team.players.length} players
                 </span>
-                <span className={`text-lg font-mono font-bold ${capStatusColors[team.capStatus]}`}>
-                  {formatSalary(team.totalCap)}
-                </span>
+                <div className="text-right">
+                  <span className={`text-lg font-mono font-bold ${capStatusColors[team.capStatus]}`}>
+                    {formatSalary(team.totalCap)}
+                  </span>
+                  {team.deadCapHit !== 0 && (
+                    <div className="text-xs text-text-dim font-mono">
+                      Dead Cap: <span className="text-cap-over">{formatSalary(team.deadCapHit)}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

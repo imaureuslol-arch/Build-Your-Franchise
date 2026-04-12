@@ -1,6 +1,6 @@
 "use client";
 
-import { Player, formatSalary, getTeamTotalCap, getCapStatus } from "@/lib/types";
+import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap } from "@/lib/types";
 
 interface TeamTradeColumnProps {
   teamName: string;
@@ -10,27 +10,34 @@ interface TeamTradeColumnProps {
   playersIn: Player[];
   otherTeamsInTrade: string[];
   destinationMap: Record<string, string>;
+  retainedSalary: number;
+  incomingRetained: number;
   onTeamChange: (team: string) => void;
   onAddPlayerOut: (player: Player) => void;
   onRemovePlayerOut: (player: Player) => void;
   onSetDestination: (playerName: string, destTeam: string) => void;
+  onRetainedChange: (amount: number) => void;
   onRemove: () => void;
   canRemove: boolean;
 }
 
 export default function TeamTradeColumn({
   teamName, allTeams, teamPlayers, playersOut, playersIn, otherTeamsInTrade,
-  destinationMap, onTeamChange, onAddPlayerOut, onRemovePlayerOut, onSetDestination,
-  onRemove, canRemove,
+  destinationMap, retainedSalary, incomingRetained, onTeamChange, onAddPlayerOut, onRemovePlayerOut, onSetDestination,
+  onRetainedChange, onRemove, canRemove,
 }: TeamTradeColumnProps) {
   const currentCap = getTeamTotalCap(teamPlayers);
   const capStatus = getCapStatus(currentCap);
   const outSalary = playersOut.reduce((s, p) => s + (p.contract_27 || 0), 0);
   const inSalary = playersIn.reduce((s, p) => s + (p.contract_27 || 0), 0);
-  const newCap = currentCap - outSalary + inSalary;
+  // Retained salary stays on this team as dead cap; incoming retained = discount from other teams
+  const newCap = currentCap - outSalary + retainedSalary + inSalary - incomingRetained;
+  const maxRetention = Math.floor(outSalary * 0.25);
 
   const capColors = { under: "text-cap-under", yellow: "text-cap-yellow", over: "text-cap-over" };
-  const availablePlayers = teamPlayers.filter((p) => !playersOut.some((out) => out.name === p.name));
+  const availablePlayers = teamPlayers
+    .filter((p) => !playersOut.some((out) => out.name === p.name))
+    .sort((a, b) => (b.contract_27 || 0) - (a.contract_27 || 0));
   const showDestPicker = otherTeamsInTrade.length > 1;
 
   return (
@@ -105,11 +112,34 @@ export default function TeamTradeColumn({
                 })}
               </div>
             )}
+            {playersOut.length > 0 && maxRetention > 0 && (
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-text-dim">Salary Retained</span>
+                  <span className="font-mono font-bold text-cap-yellow">
+                    {retainedSalary > 0 ? formatSalary(retainedSalary) : "None"}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxRetention}
+                  step={500_000}
+                  value={retainedSalary}
+                  onChange={(e) => onRetainedChange(parseInt(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-[10px] text-text-dim mt-0.5">
+                  <span>0%</span>
+                  <span>Max 25% ({formatSalary(maxRetention)})</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="p-3 border-b border-border">
             <h3 className="text-xs font-semibold text-cap-under mb-2 uppercase tracking-wider">
-              Receiving ({formatSalary(inSalary)})
+              Receiving ({formatSalary(inSalary - incomingRetained)})
             </h3>
             {playersIn.length === 0 ? (
               <p className="text-text-dim text-xs">Players sent here by other teams will appear</p>

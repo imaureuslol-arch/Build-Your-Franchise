@@ -42,6 +42,8 @@ export interface TradeTeam {
   team: string;
   playersOut: Player[];
   playersIn: Player[];
+  retainedSalary?: number;
+  incomingRetained?: number;
 }
 
 export interface ConfirmedTrade {
@@ -68,13 +70,21 @@ export const HARD_CAP = 250_000_000;
 export const SOFT_CAP = 225_000_000;
 
 export const FREE_AGENCY_TEAM = "Free Agency";
+export const DEAD_CAP_NAME = "Dead Cap";
 
-/** Parse "$42,000,000" -> 42000000, or null */
+/** Returns true if the player is a Dead Cap entry */
+export function isDeadCap(player: { name: string }): boolean {
+  return player.name === DEAD_CAP_NAME;
+}
+
+/** Parse "$42,000,000" -> 42000000, or null. Supports negatives like "-$5,000,000" */
 export function parseSalary(value: string | null): number | null {
   if (!value) return null;
-  const cleaned = value.replace(/[$,]/g, "").trim();
+  const negative = value.trim().startsWith("-");
+  const cleaned = value.replace(/[-$,]/g, "").trim();
   const num = Number(cleaned);
-  return isNaN(num) ? null : num;
+  if (isNaN(num)) return null;
+  return negative ? -num : num;
 }
 
 /** Convert a raw DB row into a Player with numeric salaries */
@@ -103,13 +113,16 @@ export function getCapStatus(totalCap: number): "under" | "yellow" | "over" {
 }
 
 export function formatSalary(amount: number | null): string {
-  if (!amount) return "-";
-  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
-  return `$${amount.toLocaleString()}`;
+  if (amount == null || amount === 0) return "-";
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
+  return `${sign}$${abs.toLocaleString()}`;
 }
 
 export function isEligibleForExtension(player: Player): boolean {
+  if (isDeadCap(player)) return false;
   const expiringAfter27 = player.contract_27 != null && player.contract_28 == null;
   const expiringAfter28 = player.contract_28 != null && player.contract_29 == null;
   return expiringAfter27 || expiringAfter28;
@@ -146,19 +159,25 @@ export function validateTrade(
     const incomingSalary = tradeTeam.playersIn.reduce(
       (sum, p) => sum + (p.contract_27 || 0), 0
     );
+    const retained = tradeTeam.retainedSalary ?? 0;
+    const inRetained = tradeTeam.incomingRetained ?? 0;
+
+    // Effective: outgoing minus what you retain (stays as dead cap), incoming minus what other teams retain
+    const effectiveOut = outgoingSalary - retained;
+    const effectiveIn = incomingSalary - inRetained;
 
     if (capStatus === "over") {
-      if (incomingSalary >= outgoingSalary) {
+      if (effectiveIn >= effectiveOut) {
         errors.push(
           `${tradeTeam.team} is over the hard cap ($${(currentCap / 1_000_000).toFixed(1)}M) and must trade away MORE salary than they take on. ` +
-            `Out: ${formatSalary(outgoingSalary)}, In: ${formatSalary(incomingSalary)}`
+            `Out: ${formatSalary(effectiveOut)}, In: ${formatSalary(effectiveIn)}`
         );
       }
     } else if (capStatus === "yellow") {
-      if (incomingSalary > outgoingSalary) {
+      if (effectiveIn > effectiveOut) {
         errors.push(
           `${tradeTeam.team} is in the soft cap zone ($${(currentCap / 1_000_000).toFixed(1)}M) and can only match salary. ` +
-            `Out: ${formatSalary(outgoingSalary)}, In: ${formatSalary(incomingSalary)}`
+            `Out: ${formatSalary(effectiveOut)}, In: ${formatSalary(effectiveIn)}`
         );
       }
     }

@@ -126,7 +126,7 @@ export default function FreeAgencyPage() {
   const isOverHardCap = myTeamCap > HARD_CAP;
 
   const freeAgents = useMemo(
-    () => players.filter((p) => p.team === FREE_AGENCY_TEAM).sort((a, b) => a.name.localeCompare(b.name)),
+    () => players.filter((p) => p.team === FREE_AGENCY_TEAM && p.name !== "Dead Cap").sort((a, b) => a.name.localeCompare(b.name)),
     [players]
   );
 
