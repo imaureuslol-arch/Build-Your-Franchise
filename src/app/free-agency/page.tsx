@@ -392,7 +392,7 @@ export default function FreeAgencyPage() {
                         </span>
                       </div>
                       <input
-                        type="range" min={1_000_000} max={80_000_000} step={500_000}
+                        type="range" min={1_000_000} max={80_000_000} step={1_000_000}
                         value={isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[year]}
                         disabled={isOverHardCap}
                         onChange={(e) => setYearAmounts(prev => ({ ...prev, [year]: parseInt(e.target.value) }))}

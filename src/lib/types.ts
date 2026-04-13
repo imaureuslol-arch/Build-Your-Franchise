@@ -168,7 +168,7 @@ export function formatSalary(amount: number | null): string {
   if (amount == null || amount === 0) return "-";
   const abs = Math.abs(amount);
   const sign = amount < 0 ? "-" : "";
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000_000) return `${sign}$${Math.round(abs / 1_000_000)}M`;
   if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
   return `${sign}$${abs.toLocaleString()}`;
 }
@@ -228,14 +228,14 @@ export function validateTrade(
     if (capStatus === "over") {
       if (effectiveIn >= effectiveOut) {
         errors.push(
-          `${tradeTeam.team} is over the hard cap ($${(currentCap / 1_000_000).toFixed(1)}M) and must trade away MORE salary than they take on. ` +
+          `${tradeTeam.team} is over the hard cap ($${Math.round(currentCap / 1_000_000)}M) and must trade away MORE salary than they take on. ` +
             `Out: ${formatSalary(effectiveOut)}, In: ${formatSalary(effectiveIn)}`
         );
       }
     } else if (capStatus === "yellow") {
       if (effectiveIn > effectiveOut) {
         errors.push(
-          `${tradeTeam.team} is in the soft cap zone ($${(currentCap / 1_000_000).toFixed(1)}M) and can only match salary. ` +
+          `${tradeTeam.team} is in the soft cap zone ($${Math.round(currentCap / 1_000_000)}M) and can only match salary. ` +
             `Out: ${formatSalary(effectiveOut)}, In: ${formatSalary(effectiveIn)}`
         );
       }

@@ -126,7 +126,7 @@ export default function TeamTradeColumn({
                   type="range"
                   min={0}
                   max={maxRetention}
-                  step={500_000}
+                  step={1_000_000}
                   value={retainedSalary}
                   onChange={(e) => onRetainedChange(parseInt(e.target.value))}
                   className="w-full"

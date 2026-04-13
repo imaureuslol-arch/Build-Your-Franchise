@@ -636,7 +636,7 @@ export default function ExtensionsPage() {
                             type="range"
                             min={1_000_000}
                             max={sliderMax}
-                            step={500_000}
+                            step={1_000_000}
                             value={yearAmounts[year]}
                             onChange={(e) => {
                               setYearAmounts((prev) => ({
