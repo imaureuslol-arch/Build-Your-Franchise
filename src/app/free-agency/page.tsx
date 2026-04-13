@@ -129,7 +129,9 @@ export default function FreeAgencyPage() {
   const isOverHardCap = myTeamCap > getHardCap();
 
   const freeAgents = useMemo(
-    () => players.filter((p) => p.team === FREE_AGENCY_TEAM && p.name !== "Dead Cap").sort((a, b) => a.name.localeCompare(b.name)),
+    () => players
+      .filter((p) => p.team === FREE_AGENCY_TEAM && p.name !== "Dead Cap")
+      .sort((a, b) => (b.ppg ?? -1) - (a.ppg ?? -1)),
     [players]
   );
 
@@ -290,7 +292,7 @@ export default function FreeAgencyPage() {
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <h1 className="text-2xl font-bold mb-6">Free Agency Tracker</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Player List */}
         <div className="lg:col-span-1">
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
@@ -315,9 +317,14 @@ export default function FreeAgencyPage() {
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-sm">{player.name}</span>
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-medium text-sm truncate">{player.name}</span>
+                        {player.ppg != null && (
+                          <span className="text-[10px] text-text-dim font-mono shrink-0">{player.ppg.toFixed(1)}</span>
+                        )}
+                      </div>
                       {playerOffers && (
-                        <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                        <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ml-2">
                           {playerOffers.length} BIDS
                         </span>
                       )}
@@ -330,7 +337,7 @@ export default function FreeAgencyPage() {
         </div>
 
         {/* Bid Builder */}
-        <div className="lg:col-span-2">
+        <div className="md:col-span-1 lg:col-span-2">
           {!selectedPlayer ? (
             <div className="bg-surface rounded-xl border border-border flex items-center justify-center h-96 text-text-dim">
               Select a player to build a bid

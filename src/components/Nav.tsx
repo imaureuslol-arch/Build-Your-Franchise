@@ -15,7 +15,11 @@ const baseLinks = [
 ];
 
 function isCommissioner(owner: { user_name: string; team_name: string } | null): boolean {
-  return owner?.user_name === "Aureus" && owner?.team_name === "Athens Olympians";
+  if (!owner) return false;
+  return (
+    (owner.user_name === "Aureus" && owner.team_name === "Athens Olympians") ||
+    (owner.user_name === "AtlantaHawks" && owner.team_name === "Jalen Johnsons Jets")
+  );
 }
 
 export default function Nav() {
@@ -40,19 +44,19 @@ export default function Nav() {
           </Link>
 
           {/* Desktop links */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 lg:gap-3">
             {teamName && (
-              <span className="text-xs text-text-muted">
+              <span className="text-xs text-text-muted hidden lg:inline">
                 <span className="text-text-dim">Playing as</span>{" "}
                 <span className="text-accent font-semibold">{owner?.user_name ?? teamName}</span>
               </span>
             )}
-            <div className="flex gap-1">
+            <div className="flex gap-0.5 lg:gap-1">
               {links.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-2 lg:px-4 py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${
                     pathname === link.href
                       ? "bg-primary text-white"
                       : "text-text-muted hover:text-text hover:bg-surface-light"

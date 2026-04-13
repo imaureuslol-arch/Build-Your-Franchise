@@ -11,8 +11,14 @@ interface PlayerValues {
   [id: number]: { fairValue: number; age: number };
 }
 
+const COMMISH_PASSWORD = "BYFCommishpwd@";
+
 function isCommissioner(owner: { user_name: string; team_name: string } | null): boolean {
-  return owner?.user_name === "Aureus" && owner?.team_name === "Athens Olympians";
+  if (!owner) return false;
+  return (
+    (owner.user_name === "Aureus" && owner.team_name === "Athens Olympians") ||
+    (owner.user_name === "AtlantaHawks" && owner.team_name === "Jalen Johnsons Jets")
+  );
 }
 
 export default function CommissionerPage() {
@@ -33,6 +39,9 @@ export default function CommissionerPage() {
   const [editGp, setEditGp] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [authenticated, setAuthenticated] = useState(false);
+  const [passwordError, setPasswordError] = useState(false);
 
   useEffect(() => {
     fetch("/api/player-values")
@@ -57,6 +66,44 @@ export default function CommissionerPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Password gate
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="bg-surface border border-border rounded-xl p-6 w-full max-w-sm space-y-4">
+          <h1 className="text-xl font-bold text-text text-center">Commissioner Tools</h1>
+          <p className="text-sm text-text-muted text-center">Enter the commissioner password to continue.</p>
+          <input
+            type="password"
+            value={passwordInput}
+            onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                if (passwordInput === COMMISH_PASSWORD) setAuthenticated(true);
+                else setPasswordError(true);
+              }
+            }}
+            placeholder="Password"
+            className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+          />
+          {passwordError && (
+            <p className="text-sm text-danger text-center">Incorrect password.</p>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (passwordInput === COMMISH_PASSWORD) setAuthenticated(true);
+              else setPasswordError(true);
+            }}
+            className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
+          >
+            Enter
+          </button>
+        </div>
       </div>
     );
   }

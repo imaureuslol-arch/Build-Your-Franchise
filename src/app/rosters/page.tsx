@@ -260,7 +260,7 @@ export default function RostersPage() {
               {/* Cap Projections */}
               <div className="border-t border-border px-4 py-3">
                 <h3 className="text-xs font-semibold text-text-dim uppercase tracking-wider mb-2">Cap Projections</h3>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {SALARY_YEARS.map((y) => {
                     const yCap = team.yearCaps[y];
                     const yStatus = getCapStatus(yCap, y);
@@ -268,7 +268,7 @@ export default function RostersPage() {
                     return (
                       <div key={y} className={`rounded-lg border p-2 text-center ${capStatusBg[yStatus]}`}>
                         <div className="text-[10px] text-text-dim font-medium">{y}</div>
-                        <div className={`text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
+                        <div className={`text-xs sm:text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
                           {formatSalary(yCap)}
                         </div>
                         {yDeadCap !== 0 && (
