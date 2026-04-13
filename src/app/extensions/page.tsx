@@ -192,15 +192,14 @@ export default function ExtensionsPage() {
       return;
 
     const baseFV = playerStats.fairValue; // millions
-    // Cap fair value at $60M for players 23 and under
-    const cappedFV = isYoungPlayer ? Math.min(baseFV, YOUNG_MAX_SALARY / 1_000_000) : baseFV;
-    // Average inflated fair value across the selected extension years
+    const maxSalary = isYoungPlayer ? YOUNG_MAX_SALARY : 80_000_000;
+    // Cap fair value at the player's max salary tier
+    const cappedFV = Math.min(baseFV, maxSalary / 1_000_000);
+    // Inflate per year, but cap each year individually so growth never exceeds the max
     const avgFairValue =
-      selectedYears.reduce((sum, y) => sum + getFairValueForYear(cappedFV, y), 0) /
-      selectedYears.length *
-      1_000_000;
-    // Also cap the inflated average for young players
-    const effectiveFairValue = isYoungPlayer ? Math.min(avgFairValue, YOUNG_MAX_SALARY) : avgFairValue;
+      selectedYears.reduce((sum, y) => sum + Math.min(getFairValueForYear(cappedFV, y) * 1_000_000, maxSalary), 0) /
+      selectedYears.length;
+    const effectiveFairValue = avgFairValue;
     const currentTotal = selectedYears.reduce(
       (sum, year) => sum + (yearAmounts[year] || 0),
       0
@@ -269,7 +268,7 @@ export default function ExtensionsPage() {
       const isSoften = updatedBestRatio >= 0.8;
       const multiplier = isSoften ? 1.1 : 1.5;
       const rawDemand = effectiveFairValue * multiplier;
-      const demandVal = isYoungPlayer ? Math.min(rawDemand, YOUNG_MAX_SALARY) : rawDemand;
+      const demandVal = Math.min(rawDemand, maxSalary);
 
       setFinalDemandAmount(demandVal);
       setIsFinalDemand(true);
@@ -417,8 +416,15 @@ export default function ExtensionsPage() {
   const sliderMax = isYoungPlayer ? YOUNG_MAX_SALARY : 80_000_000;
   const canNegotiate = !!playerStats && !statsError && !statsLoading;
 
+  const myExtensions = extensions
+    .filter((e) => e.team_name === teamName)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const leagueExtensions = extensions
+    .filter((e) => e.team_name !== teamName)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
   return (
-    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-6">
         <h1 className="text-2xl font-bold">Player Extensions</h1>
         <span className="text-sm text-text-muted">
@@ -426,8 +432,8 @@ export default function ExtensionsPage() {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-1 flex flex-col gap-6">
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             <div className="p-4 border-b border-border">
               <input
@@ -455,9 +461,69 @@ export default function ExtensionsPage() {
               ))}
             </div>
           </div>
+
+          {/* Extension History */}
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-bold">Extension History</h3>
+            </div>
+            <div className="max-h-[500px] overflow-y-auto">
+              {extensions.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-text-dim text-center">No extensions yet</p>
+              ) : (
+                <>
+                  {myExtensions.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 bg-surface-light/50 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Your Team
+                      </div>
+                      {myExtensions.map((ext) => (
+                        <div key={ext.id} className="px-4 py-2.5 border-b border-border/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{ext.player_name}</span>
+                            <span className={`text-xs font-semibold ${ext.accepted ? "text-cap-under" : "text-cap-over"}`}>
+                              {ext.accepted ? "Signed" : "Failed"}
+                            </span>
+                          </div>
+                          {ext.accepted && (
+                            <div className="text-xs text-text-muted mt-0.5">
+                              {ext.years.sort().map((y: number) => `${y}: ${formatSalary(ext.amounts[String(y)])}`).join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {leagueExtensions.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 bg-surface-light/50 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        League
+                      </div>
+                      {leagueExtensions.map((ext) => (
+                        <div key={ext.id} className="px-4 py-2.5 border-b border-border/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{ext.player_name}</span>
+                            <span className={`text-xs font-semibold ${ext.accepted ? "text-cap-under" : "text-cap-over"}`}>
+                              {ext.accepted ? "Signed" : "Failed"}
+                            </span>
+                          </div>
+                          <div className="text-xs text-text-dim mt-0.5">{ext.team_name}</div>
+                          {ext.accepted && (
+                            <div className="text-xs text-text-muted mt-0.5">
+                              {ext.years.sort().map((y: number) => `${y}: ${formatSalary(ext.amounts[String(y)])}`).join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-3">
           {!selectedPlayer ? (
             <div className="bg-surface rounded-xl border border-border flex items-center justify-center h-96 text-text-dim">
               Select a player to begin
