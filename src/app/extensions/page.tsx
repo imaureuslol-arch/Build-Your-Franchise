@@ -192,11 +192,15 @@ export default function ExtensionsPage() {
       return;
 
     const baseFV = playerStats.fairValue; // millions
+    // Cap fair value at $60M for players 23 and under
+    const cappedFV = isYoungPlayer ? Math.min(baseFV, YOUNG_MAX_SALARY / 1_000_000) : baseFV;
     // Average inflated fair value across the selected extension years
     const avgFairValue =
-      selectedYears.reduce((sum, y) => sum + getFairValueForYear(baseFV, y), 0) /
+      selectedYears.reduce((sum, y) => sum + getFairValueForYear(cappedFV, y), 0) /
       selectedYears.length *
       1_000_000;
+    // Also cap the inflated average for young players
+    const effectiveFairValue = isYoungPlayer ? Math.min(avgFairValue, YOUNG_MAX_SALARY) : avgFairValue;
     const currentTotal = selectedYears.reduce(
       (sum, year) => sum + (yearAmounts[year] || 0),
       0
@@ -228,7 +232,7 @@ export default function ExtensionsPage() {
     setValidationError(null);
 
     // 3. Logic for "Insulting" offers and Attempt Penalties
-    const currentRatio = currentAvg / avgFairValue;
+    const currentRatio = currentAvg / effectiveFairValue;
     const isInsulting = currentRatio < 0.4;
     const attemptCost = isInsulting ? 2 : 1;
     const newOffersUsedTotal = offersUsed + attemptCost;
@@ -250,7 +254,7 @@ export default function ExtensionsPage() {
     };
 
     const playerResponse = generatePlayerResponse(
-      avgFairValue,
+      effectiveFairValue,
       amounts,
       selectedYears,
       newOffersUsedTotal // Pass the penalized total
@@ -264,7 +268,8 @@ export default function ExtensionsPage() {
     if (!playerResponse.accepted && newOffersUsedTotal >= 3) {
       const isSoften = updatedBestRatio >= 0.8;
       const multiplier = isSoften ? 1.1 : 1.5;
-      const demandVal = avgFairValue * multiplier;
+      const rawDemand = effectiveFairValue * multiplier;
+      const demandVal = isYoungPlayer ? Math.min(rawDemand, YOUNG_MAX_SALARY) : rawDemand;
 
       setFinalDemandAmount(demandVal);
       setIsFinalDemand(true);
@@ -407,6 +412,9 @@ export default function ExtensionsPage() {
       </div>
     );
 
+  const YOUNG_MAX_SALARY = 60_000_000; // $60M max for players 23 and under
+  const isYoungPlayer = playerStats != null && playerStats.age <= 23;
+  const sliderMax = isYoungPlayer ? YOUNG_MAX_SALARY : 80_000_000;
   const canNegotiate = !!playerStats && !statsError && !statsLoading;
 
   return (
@@ -561,7 +569,7 @@ export default function ExtensionsPage() {
                           <input
                             type="range"
                             min={1_000_000}
-                            max={80_000_000}
+                            max={sliderMax}
                             step={500_000}
                             value={yearAmounts[year]}
                             onChange={(e) => {

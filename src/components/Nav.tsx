@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useUserTeam } from "@/lib/user-context";
 
-const links = [
+const baseLinks = [
   { href: "/", label: "Home" },
   { href: "/rosters", label: "Rosters" },
   { href: "/trades", label: "Trade Machine" },
@@ -14,10 +14,18 @@ const links = [
   { href: "/free-agency", label: "Free Agency" },
 ];
 
+function isCommissioner(owner: { user_name: string; team_name: string } | null): boolean {
+  return owner?.user_name === "Aureus" && owner?.team_name === "Athens Olympians";
+}
+
 export default function Nav() {
   const pathname = usePathname();
   const { teamName, owner } = useUserTeam();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const links = isCommissioner(owner)
+    ? [...baseLinks, { href: "/commissioner", label: "Commissioner" }]
+    : baseLinks;
 
   return (
     <nav className="bg-surface border-b border-border relative">

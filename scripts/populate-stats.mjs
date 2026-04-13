@@ -19,6 +19,21 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 
+/**
+ * Normalize a player name before sending it to the API.
+ * Strips diacritics (ć→c), removes periods (A.J.→AJ), collapses whitespace.
+ * The Flask API's get_player_id now does the same normalization on the DB side,
+ * so this ensures both ends match.
+ */
+function normalizeName(name) {
+  return name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "") // strip combining diacritics
+    .replace(/\./g, "")              // A.J. → AJ
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // ── Load .env.local manually (no extra deps) ──
 try {
   const env = readFileSync(new URL("../.env.local", import.meta.url), "utf-8");
@@ -181,11 +196,14 @@ async function getPlayerInfo(token, playerName) {
 }
 
 async function getStatsForPlayer(token, playerName) {
+  // Normalize the name so "AJ Green" matches "A.J. Green" and
+  // "Nikola Jokic" matches "Nikola Jokić" in the API's player DB.
+  const normalized = normalizeName(playerName);
   // Sequential, not parallel — both calls go to the same upstream that wraps
   // stats.nba.com, which gets cranky when hit too fast.
-  const career = await getCareerStats(token, playerName);
+  const career = await getCareerStats(token, normalized);
   await sleep(DELAY_MS);
-  const info = await getPlayerInfo(token, playerName);
+  const info = await getPlayerInfo(token, normalized);
   return { ...career, birthdate: info.birthdate };
 }
 
