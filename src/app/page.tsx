@@ -10,8 +10,8 @@ import {
   getCapStatus,
   formatSalary,
   FREE_AGENCY_TEAM,
-  HARD_CAP,
-  SOFT_CAP,
+  getHardCap,
+  getSoftCap,
 } from "@/lib/types";
 
 export default function HomePage() {
@@ -119,7 +119,9 @@ export default function HomePage() {
 
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
             {teamCaps.map((tc, i) => {
-              const pct = Math.min((tc.totalCap / (HARD_CAP * 1.3)) * 100, 100);
+              const hardCap = getHardCap();
+              const softCap = getSoftCap();
+              const pct = Math.min((tc.totalCap / (hardCap * 1.3)) * 100, 100);
               return (
                 <div
                   key={tc.team}
@@ -137,11 +139,11 @@ export default function HomePage() {
                     />
                     <div
                       className="absolute top-0 bottom-0 w-px bg-cap-yellow/50"
-                      style={{ left: `${(SOFT_CAP / (HARD_CAP * 1.3)) * 100}%` }}
+                      style={{ left: `${(softCap / (hardCap * 1.3)) * 100}%` }}
                     />
                     <div
                       className="absolute top-0 bottom-0 w-px bg-cap-over/50"
-                      style={{ left: `${(HARD_CAP / (HARD_CAP * 1.3)) * 100}%` }}
+                      style={{ left: `${(hardCap / (hardCap * 1.3)) * 100}%` }}
                     />
                   </div>
                   <span className="text-sm font-mono font-bold w-24 text-right">
@@ -154,10 +156,10 @@ export default function HomePage() {
 
           <div className="flex justify-center gap-6 mt-3 text-xs text-text-dim">
             <span className="flex items-center gap-1">
-              <span className="w-px h-3 bg-cap-yellow/50" /> $225M soft cap
+              <span className="w-px h-3 bg-cap-yellow/50" /> {formatSalary(getSoftCap())} soft cap
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-px h-3 bg-cap-over/50" /> $250M hard cap
+              <span className="w-px h-3 bg-cap-over/50" /> {formatSalary(getHardCap())} hard cap
             </span>
           </div>
         </>

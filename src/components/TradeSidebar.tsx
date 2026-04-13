@@ -1,6 +1,6 @@
 "use client";
 
-import { ConfirmedTrade, formatSalary } from "@/lib/types";
+import { ConfirmedTrade, formatSalary, getCurrentSalary } from "@/lib/types";
 
 interface TradeSidebarProps {
   trades: ConfirmedTrade[];
@@ -59,12 +59,12 @@ export default function TradeSidebar({ trades, onClose, open }: TradeSidebarProp
                       <div className="text-sm font-bold text-primary">{tradeTeam.team}</div>
                       {tradeTeam.playersOut.length > 0 && (
                         <div className="text-xs text-cap-over ml-2">
-                          Sends: {tradeTeam.playersOut.map((p) => `${p.name} (${formatSalary(p.contract_27)})`).join(", ")}
+                          Sends: {tradeTeam.playersOut.map((p) => `${p.name} (${formatSalary(getCurrentSalary(p))})`).join(", ")}
                         </div>
                       )}
                       {tradeTeam.playersIn.length > 0 && (
                         <div className="text-xs text-cap-under ml-2">
-                          Receives: {tradeTeam.playersIn.map((p) => `${p.name} (${formatSalary(p.contract_27)})`).join(", ")}
+                          Receives: {tradeTeam.playersIn.map((p) => `${p.name} (${formatSalary(getCurrentSalary(p))})`).join(", ")}
                         </div>
                       )}
                     </div>

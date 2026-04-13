@@ -36,7 +36,7 @@ const API_BASE = "http://127.0.0.1:5000";
 const USERNAME = "stats-loader";
 const PASSWORD = "stats-loader-pw";
 // Last 3 completed NBA seasons
-const RECENT_SEASONS = ["2022-23", "2023-24", "2024-25"];
+const RECENT_SEASONS = ["2023-24", "2024-25", "2025-26"];
 // Delay between requests so we don't hammer stats.nba.com (which the API proxies)
 const DELAY_MS = 1200;
 
@@ -86,7 +86,6 @@ function fantasyPerGame(row) {
   const stl = (row.STL ?? 0) / row.GP;
   const blk = (row.BLK ?? 0) / row.GP;
   const tov = (row.TOV ?? 0) / row.GP;
-  const pf = (row.PF ?? 0) / row.GP;
   const fg3m = (row.FG3M ?? 0) / row.GP;
 
   return (
@@ -96,8 +95,7 @@ function fantasyPerGame(row) {
     stl * 2 +
     blk * 2.5 +
     fg3m * 0.5 -
-    tov * 1 -
-    pf * 2
+    tov * 1
   );
 }
 
@@ -106,7 +104,7 @@ function fantasyPerGame(row) {
 // season (current season isn't complete), avg_gp = average games played across
 // the last 3 completed seasons, and birthdate is an ISO date from the NBA's
 // CommonPlayerInfo endpoint exposed by the Postgame Stats API as /playerInfo.
-const FPPG_SEASON = "2024-25";
+const FPPG_SEASON = "2025-26";
 
 async function getCareerStats(token, playerName) {
   const res = await fetch(`${API_BASE}/api/nba/player/careerSeasonTotal`, {

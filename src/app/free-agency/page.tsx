@@ -10,7 +10,10 @@ import {
   Player,
   FREE_AGENCY_TEAM,
   formatSalary,
-  HARD_CAP,
+  getHardCap,
+  SALARY_YEARS,
+  getCurrentSeasonYear,
+  getCurrentSalary,
 } from "@/lib/types";
 
 const MIN_OFFER_PER_YEAR = 4_000_000;
@@ -120,10 +123,10 @@ export default function FreeAgencyPage() {
     if (!myOwner) return 0;
     return players
       .filter((p) => p.team === myOwner.team_name)
-      .reduce((sum, p) => sum + (p.contract_27 ?? 0), 0);
+      .reduce((sum, p) => sum + (getCurrentSalary(p) ?? 0), 0);
   }, [players, myOwner]);
 
-  const isOverHardCap = myTeamCap > HARD_CAP;
+  const isOverHardCap = myTeamCap > getHardCap();
 
   const freeAgents = useMemo(
     () => players.filter((p) => p.team === FREE_AGENCY_TEAM && p.name !== "Dead Cap").sort((a, b) => a.name.localeCompare(b.name)),
@@ -140,7 +143,7 @@ export default function FreeAgencyPage() {
     ? freeAgents.filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : freeAgents;
 
-  const availableYears = [2027, 2028, 2029, 2030];
+  const availableYears = (SALARY_YEARS as readonly number[]).filter((y) => y >= getCurrentSeasonYear());
 
   const offersByPlayer = useMemo(() => {
     const map = new Map<string, FAOffer[]>();

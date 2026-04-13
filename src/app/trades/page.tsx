@@ -11,6 +11,7 @@ import {
   ConfirmedTrade,
   FREE_AGENCY_TEAM,
   validateTrade,
+  getCurrentSalary,
 } from "@/lib/types";
 import TeamTradeColumn from "@/components/TeamTradeColumn";
 import TradeSidebar from "@/components/TradeSidebar";
@@ -53,10 +54,37 @@ function TradesPage() {
   const [passwordInput, setPasswordInput] = useState("");
   const ADMIN_PASSWORD = "stoplookinginthefilesasshole"; // Set your password here
 
-  // Pre-select team from query param (from roster player search)
+  // Pre-populate from query params (roster search sends ?team=, trade finder sends ?team1=&team1out=&team2=&team2out=)
   useEffect(() => {
+    if (allPlayers.length === 0) return;
+    const rostered = allPlayers.filter((p) => p.team !== FREE_AGENCY_TEAM);
+
+    const team1 = searchParams.get("team1");
+    const team2 = searchParams.get("team2");
+
+    // Full trade pre-population from Trade Finder
+    if (team1 && team2) {
+      const team1OutNames = (searchParams.get("team1out") ?? "").split(",").filter(Boolean);
+      const team2OutNames = (searchParams.get("team2out") ?? "").split(",").filter(Boolean);
+      const team1Out = rostered.filter((p) => p.team === team1 && team1OutNames.includes(p.name));
+      const team2Out = rostered.filter((p) => p.team === team2 && team2OutNames.includes(p.name));
+
+      setSlots([
+        { team: team1, playersOut: team1Out, retainedSalary: 0 },
+        { team: team2, playersOut: team2Out, retainedSalary: 0 },
+      ]);
+
+      // Auto-set destinations (2-team trade: each side goes to the other)
+      const newDestMap: Record<string, string> = {};
+      for (const p of team1Out) newDestMap[`${team1}:${p.name}`] = team2;
+      for (const p of team2Out) newDestMap[`${team2}:${p.name}`] = team1;
+      setDestinationMap(newDestMap);
+      return;
+    }
+
+    // Simple team pre-select from roster search
     const teamParam = searchParams.get("team");
-    if (teamParam && allPlayers.length > 0) {
+    if (teamParam) {
       setSlots((prev) => {
         if (prev[0].team === teamParam) return prev;
         const next = [...prev];
@@ -144,7 +172,7 @@ function TradesPage() {
   function handleRemovePlayerOut(slotIndex: number, player: Player) {
     const slot = slots[slotIndex];
     const remaining = slot.playersOut.filter((p) => p.name !== player.name);
-    const newOutTotal = remaining.reduce((s, p) => s + (p.contract_27 || 0), 0);
+    const newOutTotal = remaining.reduce((s, p) => s + (getCurrentSalary(p) || 0), 0);
     const maxRetained = Math.floor(newOutTotal * 0.25);
     updateSlot(slotIndex, {
       playersOut: remaining,
@@ -169,9 +197,9 @@ function TradesPage() {
       );
       if (outToThisTeam.length > 0) {
         // Distribute retained salary proportionally across all outgoing players
-        const slotOutTotal = slot.playersOut.reduce((s, p) => s + (p.contract_27 || 0), 0);
+        const slotOutTotal = slot.playersOut.reduce((s, p) => s + (getCurrentSalary(p) || 0), 0);
         if (slotOutTotal > 0) {
-          const toThisTeamSalary = outToThisTeam.reduce((s, p) => s + (p.contract_27 || 0), 0);
+          const toThisTeamSalary = outToThisTeam.reduce((s, p) => s + (getCurrentSalary(p) || 0), 0);
           total += Math.round(slot.retainedSalary * (toThisTeamSalary / slotOutTotal));
         }
       }

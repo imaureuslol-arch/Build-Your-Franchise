@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
 import {
@@ -13,6 +14,7 @@ import {
   getTeamTotalCap,
   getCapStatus,
   formatSalary,
+  getCurrentSalary,
 } from "@/lib/types";
 
 interface PlayerValue {
@@ -31,6 +33,7 @@ interface PackageResult {
 export default function TradeFinderPage() {
   const { players: allPlayers, loading: pLoading } = usePlayers();
   const { teamName, owner, isLoading: teamLoading } = useUserTeam();
+  const router = useRouter();
   const loading = pLoading || teamLoading;
 
   // Fair values from bulk endpoint
@@ -57,7 +60,8 @@ export default function TradeFinderPage() {
   const [rosterSearch, setRosterSearch] = useState("");
 
   // Filters
-  const [playerCount, setPlayerCount] = useState(1);
+  const [playerCountMin, setPlayerCountMin] = useState(1);
+  const [playerCountMax, setPlayerCountMax] = useState(2);
   const [salaryMin, setSalaryMin] = useState(5_000_000);
   const [salaryMax, setSalaryMax] = useState(80_000_000);
   const [ageMin, setAgeMin] = useState(18);
@@ -73,7 +77,7 @@ export default function TradeFinderPage() {
   );
 
   const myPlayers = useMemo(
-    () => rostered.filter((p) => p.team === teamName).sort((a, b) => (b.contract_27 || 0) - (a.contract_27 || 0)),
+    () => rostered.filter((p) => p.team === teamName).sort((a, b) => (getCurrentSalary(b) || 0) - (getCurrentSalary(a) || 0)),
     [rostered, teamName]
   );
 
@@ -97,7 +101,7 @@ export default function TradeFinderPage() {
   );
 
   const userPackageSalary = useMemo(
-    () => selectedPlayers.reduce((sum, p) => sum + (p.contract_27 || 0), 0),
+    () => selectedPlayers.reduce((sum, p) => sum + (getCurrentSalary(p) || 0), 0),
     [selectedPlayers]
   );
 
@@ -132,11 +136,14 @@ export default function TradeFinderPage() {
         return true;
       });
 
-      // Find combinations of playerCount size
-      const combos = getCombinations(eligible, playerCount);
+      // Find combinations for each size in the player count range
+      const combos: Player[][] = [];
+      for (let size = playerCountMin; size <= playerCountMax; size++) {
+        combos.push(...getCombinations(eligible, size));
+      }
 
       for (const combo of combos) {
-        const totalSalary = combo.reduce((s, p) => s + (p.contract_27 || 0), 0);
+        const totalSalary = combo.reduce((s, p) => s + (getCurrentSalary(p) || 0), 0);
         if (totalSalary < salaryMin || totalSalary > salaryMax) continue;
 
         const totalFV = combo.reduce((s, p) => s + (playerValues[p.id]?.fairValue ?? 0), 0);
@@ -164,7 +171,16 @@ export default function TradeFinderPage() {
 
     setResults(packages.slice(0, 50)); // Top 50 results
     setSearched(true);
-  }, [selectedPlayers, rostered, teamName, allPlayers, myCapStatus, playerValues, playerCount, salaryMin, salaryMax, ageMin, ageMax, userPackageFV]);
+  }, [selectedPlayers, rostered, teamName, allPlayers, myCapStatus, playerValues, playerCountMin, playerCountMax, salaryMin, salaryMax, ageMin, ageMax, userPackageFV]);
+
+  function sendToTradeMachine(pkg: PackageResult) {
+    const params = new URLSearchParams();
+    params.set("team1", teamName ?? "");
+    params.set("team1out", selectedPlayers.map((p) => p.name).join(","));
+    params.set("team2", pkg.team);
+    params.set("team2out", pkg.players.map((p) => p.name).join(","));
+    router.push(`/trades?${params.toString()}`);
+  }
 
   function togglePlayer(player: Player) {
     setSelectedPlayers((prev) => {
@@ -226,7 +242,7 @@ export default function TradeFinderPage() {
                       <span className="font-medium truncate min-w-0">{p.name}</span>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-text-muted font-mono text-xs">
-                          {formatSalary(p.contract_27)}
+                          {formatSalary(getCurrentSalary(p))}
                         </span>
                         <button
                           onClick={() => togglePlayer(p)}
@@ -265,7 +281,7 @@ export default function TradeFinderPage() {
                       )}
                     </div>
                     <span className="text-xs text-text-dim font-mono shrink-0">
-                      {formatSalary(player.contract_27)}
+                      {formatSalary(getCurrentSalary(player))}
                     </span>
                   </button>
                   );
@@ -283,25 +299,42 @@ export default function TradeFinderPage() {
             </h2>
 
             <div className="space-y-4">
-              {/* Player count */}
+              {/* Player count range */}
               <div>
                 <label className="text-xs text-text-dim block mb-1">
-                  Players in return package
+                  Players in return package: {playerCountMin} &ndash; {playerCountMax}
                 </label>
-                <div className="flex gap-1.5">
-                  {[1, 2, 3, 4].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => { setPlayerCount(n); setSearched(false); }}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        playerCount === n
-                          ? "bg-primary text-white"
-                          : "bg-surface-light text-text-muted border border-border"
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-text-dim w-8">Min</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={4}
+                      value={playerCountMin}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value);
+                        setPlayerCountMin(Math.min(v, playerCountMax));
+                        setSearched(false);
+                      }}
+                      className="flex-1"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-text-dim w-8">Max</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={4}
+                      value={playerCountMax}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value);
+                        setPlayerCountMax(Math.max(v, playerCountMin));
+                        setSearched(false);
+                      }}
+                      className="flex-1"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -440,11 +473,17 @@ export default function TradeFinderPage() {
                               </span>
                             </div>
                             <span className="font-mono text-text-muted text-xs shrink-0">
-                              {formatSalary(p.contract_27)}
+                              {formatSalary(getCurrentSalary(p))}
                             </span>
                           </div>
                         ))}
                       </div>
+                      <button
+                        onClick={() => sendToTradeMachine(pkg)}
+                        className="mt-2 w-full py-1.5 text-xs font-medium bg-primary/10 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition-colors"
+                      >
+                        Send to Trade Machine
+                      </button>
                     </div>
                   ))}
                 </div>

@@ -66,8 +66,60 @@ export interface ChatMessage {
 export const SALARY_YEARS = [2027, 2028, 2029, 2030] as const;
 export type SalaryYear = (typeof SALARY_YEARS)[number];
 
-export const HARD_CAP = 250_000_000;
-export const SOFT_CAP = 225_000_000;
+export const HARD_CAP_BASE = 250_000_000;
+export const SOFT_CAP_BASE = 225_000_000;
+const CAP_BASE_YEAR = 2027;
+const CAP_INCREASE_PER_YEAR = 25_000_000;
+const FAIR_VALUE_GROWTH_RATE = 0.05; // 5% per year
+
+/** Hard cap for a given season year ($250M in 2027, +$25M/yr from 2028) */
+export function getHardCap(year?: number): number {
+  const y = year ?? getCurrentSeasonYear();
+  const yearsAfterBase = Math.max(0, y - CAP_BASE_YEAR);
+  return HARD_CAP_BASE + yearsAfterBase * CAP_INCREASE_PER_YEAR;
+}
+
+/** Soft cap for a given season year ($225M in 2027, +$25M/yr from 2028) */
+export function getSoftCap(year?: number): number {
+  const y = year ?? getCurrentSeasonYear();
+  const yearsAfterBase = Math.max(0, y - CAP_BASE_YEAR);
+  return SOFT_CAP_BASE + yearsAfterBase * CAP_INCREASE_PER_YEAR;
+}
+
+/** Inflate a base fair value (current season) to a future year at 5%/yr */
+export function getFairValueForYear(baseFV: number, year: number): number {
+  const currentYear = getCurrentSeasonYear();
+  const yearsAhead = Math.max(0, year - currentYear);
+  return baseFV * (1 + FAIR_VALUE_GROWTH_RATE) ** yearsAhead;
+}
+
+/** Season transition: on or after April 1 of year Y → season year is Y+1 */
+export function getCurrentSeasonYear(): number {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth(); // 0-indexed: March=2, April=3
+  return month >= 3 ? year + 1 : year;
+}
+
+type ContractKey = "contract_27" | "contract_28" | "contract_29" | "contract_30";
+
+const YEAR_TO_CONTRACT: Record<number, ContractKey> = {
+  2027: "contract_27",
+  2028: "contract_28",
+  2029: "contract_29",
+  2030: "contract_30",
+};
+
+/** Get a player's salary for a specific year */
+export function getPlayerSalary(player: Player, year: number): number | null {
+  const key = YEAR_TO_CONTRACT[year];
+  return key ? player[key] : null;
+}
+
+/** Get a player's salary for the current season year */
+export function getCurrentSalary(player: Player): number | null {
+  return getPlayerSalary(player, getCurrentSeasonYear());
+}
 
 export const FREE_AGENCY_TEAM = "Free Agency";
 export const DEAD_CAP_NAME = "Dead Cap";
@@ -103,12 +155,12 @@ export function parsePlayer(raw: PlayerRaw): Player {
 }
 
 export function getTeamTotalCap(players: Player[]): number {
-  return players.reduce((sum, p) => sum + (p.contract_27 || 0), 0);
+  return players.reduce((sum, p) => sum + (getCurrentSalary(p) || 0), 0);
 }
 
-export function getCapStatus(totalCap: number): "under" | "yellow" | "over" {
-  if (totalCap > HARD_CAP) return "over";
-  if (totalCap > SOFT_CAP) return "yellow";
+export function getCapStatus(totalCap: number, year?: number): "under" | "yellow" | "over" {
+  if (totalCap > getHardCap(year)) return "over";
+  if (totalCap > getSoftCap(year)) return "yellow";
   return "under";
 }
 
@@ -123,19 +175,26 @@ export function formatSalary(amount: number | null): string {
 
 export function isEligibleForExtension(player: Player): boolean {
   if (isDeadCap(player)) return false;
-  const expiringAfter27 = player.contract_27 != null && player.contract_28 == null;
-  const expiringAfter28 = player.contract_28 != null && player.contract_29 == null;
-  return expiringAfter27 || expiringAfter28;
+  const currentYear = getCurrentSeasonYear();
+  for (let i = 0; i < SALARY_YEARS.length - 1; i++) {
+    const year = SALARY_YEARS[i];
+    const nextYear = SALARY_YEARS[i + 1];
+    if (year < currentYear) continue;
+    if (getPlayerSalary(player, year) != null && getPlayerSalary(player, nextYear) == null) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function getExtensionYears(player: Player): number[] {
-  if (player.contract_27 != null && player.contract_28 == null) {
-    return [2028, 2029, 2030];
+  const currentYear = getCurrentSeasonYear();
+  let lastContractYear = 0;
+  for (const year of SALARY_YEARS) {
+    if (year < currentYear) continue;
+    if (getPlayerSalary(player, year) != null) lastContractYear = year;
   }
-  if (player.contract_28 != null && player.contract_29 == null) {
-    return [2029, 2030];
-  }
-  return [];
+  return SALARY_YEARS.filter((y) => y > lastContractYear);
 }
 
 export function validateTrade(
@@ -154,10 +213,10 @@ export function validateTrade(
     const capStatus = getCapStatus(currentCap);
 
     const outgoingSalary = tradeTeam.playersOut.reduce(
-      (sum, p) => sum + (p.contract_27 || 0), 0
+      (sum, p) => sum + (getCurrentSalary(p) || 0), 0
     );
     const incomingSalary = tradeTeam.playersIn.reduce(
-      (sum, p) => sum + (p.contract_27 || 0), 0
+      (sum, p) => sum + (getCurrentSalary(p) || 0), 0
     );
     const retained = tradeTeam.retainedSalary ?? 0;
     const inRetained = tradeTeam.incomingRetained ?? 0;

@@ -11,6 +11,7 @@ import {
   isEligibleForExtension,
   getExtensionYears,
   formatSalary,
+  getFairValueForYear,
 } from "@/lib/types";
 
 interface PlayerStats {
@@ -190,7 +191,12 @@ export default function ExtensionsPage() {
     )
       return;
 
-    const fairValue = playerStats.fairValue * 1_000_000;
+    const baseFV = playerStats.fairValue; // millions
+    // Average inflated fair value across the selected extension years
+    const avgFairValue =
+      selectedYears.reduce((sum, y) => sum + getFairValueForYear(baseFV, y), 0) /
+      selectedYears.length *
+      1_000_000;
     const currentTotal = selectedYears.reduce(
       (sum, year) => sum + (yearAmounts[year] || 0),
       0
@@ -222,7 +228,7 @@ export default function ExtensionsPage() {
     setValidationError(null);
 
     // 3. Logic for "Insulting" offers and Attempt Penalties
-    const currentRatio = currentAvg / fairValue;
+    const currentRatio = currentAvg / avgFairValue;
     const isInsulting = currentRatio < 0.4;
     const attemptCost = isInsulting ? 2 : 1;
     const newOffersUsedTotal = offersUsed + attemptCost;
@@ -244,7 +250,7 @@ export default function ExtensionsPage() {
     };
 
     const playerResponse = generatePlayerResponse(
-      fairValue,
+      avgFairValue,
       amounts,
       selectedYears,
       newOffersUsedTotal // Pass the penalized total
@@ -258,7 +264,7 @@ export default function ExtensionsPage() {
     if (!playerResponse.accepted && newOffersUsedTotal >= 3) {
       const isSoften = updatedBestRatio >= 0.8;
       const multiplier = isSoften ? 1.1 : 1.5;
-      const demandVal = fairValue * multiplier;
+      const demandVal = avgFairValue * multiplier;
 
       setFinalDemandAmount(demandVal);
       setIsFinalDemand(true);

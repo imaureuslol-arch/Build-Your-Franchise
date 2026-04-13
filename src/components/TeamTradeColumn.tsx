@@ -1,6 +1,6 @@
 "use client";
 
-import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap } from "@/lib/types";
+import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap, getCurrentSalary } from "@/lib/types";
 
 interface TeamTradeColumnProps {
   teamName: string;
@@ -28,18 +28,18 @@ export default function TeamTradeColumn({
 }: TeamTradeColumnProps) {
   const currentCap = getTeamTotalCap(teamPlayers);
   const capStatus = getCapStatus(currentCap);
-  const outSalary = playersOut.reduce((s, p) => s + (p.contract_27 || 0), 0);
-  const inSalary = playersIn.reduce((s, p) => s + (p.contract_27 || 0), 0);
+  const outSalary = playersOut.reduce((s, p) => s + (getCurrentSalary(p) || 0), 0);
+  const inSalary = playersIn.reduce((s, p) => s + (getCurrentSalary(p) || 0), 0);
   // Retained salary stays on this team as dead cap; incoming retained = discount from other teams
   const newCap = currentCap - outSalary + retainedSalary + inSalary - incomingRetained;
   // Retention only applies to real player salary, not Dead Cap
-  const realOutSalary = playersOut.filter((p) => !isDeadCap(p)).reduce((s, p) => s + (p.contract_27 || 0), 0);
+  const realOutSalary = playersOut.filter((p) => !isDeadCap(p)).reduce((s, p) => s + (getCurrentSalary(p) || 0), 0);
   const maxRetention = Math.floor(realOutSalary * 0.25);
 
   const capColors = { under: "text-cap-under", yellow: "text-cap-yellow", over: "text-cap-over" };
   const availablePlayers = teamPlayers
     .filter((p) => !playersOut.some((out) => out.name === p.name))
-    .sort((a, b) => (b.contract_27 || 0) - (a.contract_27 || 0));
+    .sort((a, b) => (getCurrentSalary(b) || 0) - (getCurrentSalary(a) || 0));
   const showDestPicker = otherTeamsInTrade.length > 1;
 
   return (
@@ -88,7 +88,7 @@ export default function TeamTradeColumn({
                       <div className="flex items-center justify-between text-sm">
                         <span>{p.name}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-text-muted font-mono text-xs">{formatSalary(p.contract_27)}</span>
+                          <span className="text-text-muted font-mono text-xs">{formatSalary(getCurrentSalary(p))}</span>
                           <button onClick={() => onRemovePlayerOut(p)} className="text-text-dim hover:text-danger text-xs">&times;</button>
                         </div>
                       </div>
@@ -150,7 +150,7 @@ export default function TeamTradeColumn({
                 {playersIn.map((p) => (
                   <div key={p.name} className="flex items-center justify-between bg-cap-under/10 rounded px-2 py-1 text-sm">
                     <span>{p.name}</span>
-                    <span className="text-text-muted font-mono text-xs">{formatSalary(p.contract_27)}</span>
+                    <span className="text-text-muted font-mono text-xs">{formatSalary(getCurrentSalary(p))}</span>
                   </div>
                 ))}
               </div>
@@ -167,7 +167,7 @@ export default function TeamTradeColumn({
                   className="w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-surface-light transition-colors text-left"
                 >
                   <span>{p.name}</span>
-                  <span className="text-text-dim font-mono text-xs">{formatSalary(p.contract_27)}</span>
+                  <span className="text-text-dim font-mono text-xs">{formatSalary(getCurrentSalary(p))}</span>
                 </button>
               ))}
             </div>

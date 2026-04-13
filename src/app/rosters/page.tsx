@@ -15,6 +15,10 @@ import {
   getTeamTotalCap,
   getCapStatus,
   formatSalary,
+  getCurrentSalary,
+  getPlayerSalary,
+  getSoftCap,
+  getHardCap,
 } from "@/lib/types";
 
 export default function RostersPage() {
@@ -58,18 +62,29 @@ export default function RostersPage() {
         const owner = owners.get(team);
         const realPlayers = teamPlayers.filter((p) => !isDeadCap(p));
         const deadCapPlayer = teamPlayers.find((p) => isDeadCap(p));
-        const deadCapHit = deadCapPlayer?.contract_27 ?? 0;
+        const deadCapHit = deadCapPlayer ? getCurrentSalary(deadCapPlayer) ?? 0 : 0;
         const totalCap = getTeamTotalCap(teamPlayers); // includes dead cap
+
+        // Per-year cap projections
+        const yearCaps: Record<number, number> = {};
+        const yearDeadCaps: Record<number, number> = {};
+        for (const y of SALARY_YEARS) {
+          yearCaps[y] = teamPlayers.reduce((sum, p) => sum + (getPlayerSalary(p, y) || 0), 0);
+          yearDeadCaps[y] = deadCapPlayer ? getPlayerSalary(deadCapPlayer, y) ?? 0 : 0;
+        }
+
         return {
           team,
           userName: owner?.user_name || "",
           conference: owner?.conference || "",
           players: realPlayers.sort(
-            (a, b) => (b.contract_27 || 0) - (a.contract_27 || 0)
+            (a, b) => (getCurrentSalary(b) || 0) - (getCurrentSalary(a) || 0)
           ),
           totalCap,
           capStatus: getCapStatus(totalCap),
           deadCapHit,
+          yearCaps,
+          yearDeadCaps,
         };
       })
       .sort((a, b) => a.team.localeCompare(b.team));
@@ -185,13 +200,13 @@ export default function RostersPage() {
 
       <div className="flex flex-wrap gap-x-4 gap-y-2 mb-6 text-xs sm:text-sm">
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-cap-under" /> Under $225M
+          <span className="w-3 h-3 rounded-full bg-cap-under" /> Under {formatSalary(getSoftCap())}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-cap-yellow" /> $225M - $250M
+          <span className="w-3 h-3 rounded-full bg-cap-yellow" /> {formatSalary(getSoftCap())} - {formatSalary(getHardCap())}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-cap-over" /> Over $250M
+          <span className="w-3 h-3 rounded-full bg-cap-over" /> Over {formatSalary(getHardCap())}
         </span>
       </div>
 
@@ -233,7 +248,7 @@ export default function RostersPage() {
                   </span>
                   {team.deadCapHit !== 0 && (
                     <div className="text-xs text-text-dim font-mono">
-                      Dead Cap: <span className="text-cap-over">{formatSalary(team.deadCapHit)}</span>
+                      Dead Cap: <span className={team.deadCapHit < 0 ? "text-cap-under" : "text-cap-over"}>{formatSalary(team.deadCapHit)}</span>
                     </div>
                   )}
                 </div>
@@ -241,6 +256,33 @@ export default function RostersPage() {
             </div>
 
             {selectedTeam === team.team && (
+              <>
+              {/* Cap Projections */}
+              <div className="border-t border-border px-4 py-3">
+                <h3 className="text-xs font-semibold text-text-dim uppercase tracking-wider mb-2">Cap Projections</h3>
+                <div className="grid grid-cols-4 gap-2">
+                  {SALARY_YEARS.map((y) => {
+                    const yCap = team.yearCaps[y];
+                    const yStatus = getCapStatus(yCap, y);
+                    const yDeadCap = team.yearDeadCaps[y];
+                    return (
+                      <div key={y} className={`rounded-lg border p-2 text-center ${capStatusBg[yStatus]}`}>
+                        <div className="text-[10px] text-text-dim font-medium">{y}</div>
+                        <div className={`text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
+                          {formatSalary(yCap)}
+                        </div>
+                        {yDeadCap !== 0 && (
+                          <div className="text-[10px] font-mono text-text-dim">
+                            DC: <span className={yDeadCap < 0 ? "text-cap-under" : "text-cap-over"}>{formatSalary(yDeadCap)}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Player Roster */}
               <div className="border-t border-border overflow-x-auto">
                 <table className="w-full text-sm min-w-[480px]">
                   <thead>
@@ -260,23 +302,17 @@ export default function RostersPage() {
                         className="border-t border-border/50 hover:bg-surface-light/50"
                       >
                         <td className="px-4 py-2 font-medium">{player.name}</td>
-                        <td className="text-right px-2 py-2 font-mono text-text-muted">
-                          {formatSalary(player.contract_27)}
-                        </td>
-                        <td className="text-right px-2 py-2 font-mono text-text-muted">
-                          {formatSalary(player.contract_28)}
-                        </td>
-                        <td className="text-right px-2 py-2 font-mono text-text-muted">
-                          {formatSalary(player.contract_29)}
-                        </td>
-                        <td className="text-right px-2 py-2 font-mono text-text-muted">
-                          {formatSalary(player.contract_30)}
-                        </td>
+                        {SALARY_YEARS.map((y) => (
+                          <td key={y} className="text-right px-2 py-2 font-mono text-text-muted">
+                            {formatSalary(getPlayerSalary(player, y))}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         ))}
