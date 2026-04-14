@@ -155,7 +155,18 @@ export default function ExtensionsPage() {
       );
       const data = await res.json();
       if (res.ok) {
-        setPlayerStats(data as PlayerStats);
+        const stats = data as PlayerStats;
+        setPlayerStats(stats);
+        const maxSalary = stats.age <= 23 ? 60_000_000 : 80_000_000;
+        if (stats.fairValue * 1_000_000 > maxSalary) {
+          setChat([
+            {
+              role: "player",
+              content:
+                "I know what I'm worth, you know what I'm worth. Just put down the max and let's get to work.",
+            },
+          ]);
+        }
       } else {
         setStatsError(data.error ?? "Stats unavailable — contact the commissioner.");
       }
@@ -195,6 +206,9 @@ export default function ExtensionsPage() {
     const maxSalary = isYoungPlayer ? YOUNG_MAX_SALARY : 80_000_000;
     // Cap fair value at the player's max salary tier
     const cappedFV = Math.min(baseFV, maxSalary / 1_000_000);
+    // True FV exceeds the age-tier cap — player demands exactly the cap and
+    // won't take anything below it.
+    const isSnappedToCap = baseFV * 1_000_000 > maxSalary;
     // Inflate per year, but cap each year individually so growth never exceeds the max
     const avgFairValue =
       selectedYears.reduce((sum, y) => sum + Math.min(getFairValueForYear(cappedFV, y) * 1_000_000, maxSalary), 0) /
@@ -256,7 +270,8 @@ export default function ExtensionsPage() {
       effectiveFairValue,
       amounts,
       selectedYears,
-      newOffersUsedTotal // Pass the penalized total
+      newOffersUsedTotal, // Pass the penalized total
+      isSnappedToCap
     );
 
     const updatedBestRatio = Math.max(bestRatioSoFar, currentRatio);
@@ -335,7 +350,8 @@ export default function ExtensionsPage() {
     fairValue: number,
     amounts: { [year: number]: number },
     years: number[],
-    offerNum: number
+    offerNum: number,
+    isSnappedToCap: boolean
   ): { message: ChatMessage; accepted: boolean } {
     const avgPerYear =
       Object.values(amounts).reduce((s, v) => s + v, 0) / years.length;
@@ -347,7 +363,12 @@ export default function ExtensionsPage() {
         ? "This is your last chance."
         : `${remainingOffers} offers remaining`;
 
-    if (ratio >= 1.3) // Slightly lowered threshold for "Hell yeah"
+    // When snapped to the cap the player's true value exceeds the max, so they
+    // demand the full cap. Accept only at (effectively) 100% of the capped FV.
+    // 0.999 absorbs floating-point drift across multi-year averaging.
+    const acceptThreshold = isSnappedToCap ? 0.999 : 0.95;
+
+    if (!isSnappedToCap && ratio >= 1.3) // "Hell yeah" is unreachable when snapped (slider == cap)
       return {
         message: {
           role: "player",
@@ -355,14 +376,28 @@ export default function ExtensionsPage() {
         },
         accepted: true,
       };
-    if (ratio >= 0.95)
+    if (ratio >= acceptThreshold)
       return {
         message: {
           role: "player",
-          content: "Alright, that's a fair deal. Let's do it.",
+          content: isSnappedToCap
+            ? "I appreciate you putting your faith in me. You're not gonna regret it."
+            : "Alright, that's a fair deal. Let's do it.",
         },
         accepted: true,
       };
+
+    // Snapped players skip the progressive bands — anything under max gets the
+    // same dismissive response and a restated max demand.
+    if (isSnappedToCap) {
+      return {
+        message: {
+          role: "player",
+          content: `You're not actually trying to negotiate right? Put down the max and let's get to work. (${offerText})`,
+        },
+        accepted: false,
+      };
+    }
 
     let responseContent = "";
     if (ratio >= 0.9)

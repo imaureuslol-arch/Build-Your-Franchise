@@ -62,8 +62,8 @@ export default function CommissionerPage() {
   }
 
   useEffect(() => {
-    if (authenticated) fetchLoggedInUsers();
-  }, [authenticated]);
+    if (authenticated || isWhitelisted) fetchLoggedInUsers();
+  }, [authenticated, isWhitelisted]);
 
   async function handleLogOutUser(teamName: string) {
     if (!confirm(`Log out ${teamName}? This removes all IP mappings for that team.`)) return;
@@ -106,8 +106,8 @@ export default function CommissionerPage() {
     );
   }
 
-  // Password gate
-  if (!authenticated) {
+  // Password gate — skipped for whitelisted commissioner IPs
+  if (!authenticated && !isWhitelisted) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="bg-surface border border-border rounded-xl p-6 w-full max-w-sm space-y-4">
@@ -231,8 +231,14 @@ export default function CommissionerPage() {
 
   const sv = selectedPlayer ? values[selectedPlayer.id] : null;
 
+  const rankedByFairValue = players
+    .filter((p) => p.name !== "Dead Cap" && values[p.id] != null)
+    .map((p) => ({ player: p, ...values[p.id] }))
+    .sort((a, b) => b.fairValue - a.fairValue);
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col lg:flex-row gap-6">
+      <div className="flex-1 min-w-0 space-y-8">
       <h1 className="text-2xl font-bold text-text">Commissioner Tools</h1>
 
       {/* Search */}
@@ -478,6 +484,53 @@ export default function CommissionerPage() {
           )}
         </div>
       </section>
+      </div>
+
+      {/* Fair Value sidebar */}
+      <aside className="lg:w-72 lg:shrink-0">
+        <div className="bg-surface border border-border rounded-xl overflow-hidden lg:sticky lg:top-4">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+              Fair Value Rankings
+            </h3>
+            <p className="text-xs text-text-dim mt-0.5">
+              {rankedByFairValue.length} players
+            </p>
+          </div>
+          <ul className="divide-y divide-border max-h-[80vh] overflow-y-auto">
+            {rankedByFairValue.map(({ player, fairValue, age }, i) => {
+              const isSelected = selectedPlayer?.id === player.id;
+              return (
+                <li key={player.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      selectPlayer(player);
+                      setSearchQuery(player.name);
+                    }}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
+                      isSelected ? "bg-primary/10" : "hover:bg-surface-light"
+                    }`}
+                  >
+                    <span className="text-xs text-text-dim font-mono w-6 shrink-0">
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-text truncate">{player.name}</div>
+                      <div className="text-xs text-text-dim truncate">
+                        {player.team} &middot; Age {age}
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-accent shrink-0 font-mono">
+                      ${fairValue}M
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </aside>
     </div>
   );
 }
