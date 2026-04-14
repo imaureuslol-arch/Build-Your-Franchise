@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
+export const runtime = "edge";
+
 function getSupabaseServer() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key =
