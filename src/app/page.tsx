@@ -3,7 +3,6 @@
 export const dynamic = "force-dynamic";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { usePlayers, useTeamOwners } from "@/lib/hooks";
 import {
   getTeamTotalCap,
@@ -58,42 +57,6 @@ export default function HomePage() {
         <p className="text-text-muted text-sm sm:text-lg">
           Mock trades, offer extensions, and view rosters for your cap league
         </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
-        <Link
-          href="/rosters"
-          className="bg-surface border border-border rounded-xl p-6 hover:border-primary/50 transition-colors group"
-        >
-          <h2 className="text-lg font-bold mb-1 group-hover:text-primary transition-colors">
-            Rosters
-          </h2>
-          <p className="text-text-muted text-sm">
-            View all 24 team rosters with salary breakdowns and cap status
-          </p>
-        </Link>
-        <Link
-          href="/trades"
-          className="bg-surface border border-border rounded-xl p-6 hover:border-primary/50 transition-colors group"
-        >
-          <h2 className="text-lg font-bold mb-1 group-hover:text-primary transition-colors">
-            Trade Machine
-          </h2>
-          <p className="text-text-muted text-sm">
-            Build mock trades with up to 4 teams and validate against cap rules
-          </p>
-        </Link>
-        <Link
-          href="/extensions"
-          className="bg-surface border border-border rounded-xl p-6 hover:border-primary/50 transition-colors group"
-        >
-          <h2 className="text-lg font-bold mb-1 group-hover:text-primary transition-colors">
-            Extensions
-          </h2>
-          <p className="text-text-muted text-sm">
-            Negotiate extensions with players on expiring contracts
-          </p>
-        </Link>
       </div>
 
       {loading ? (

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useUserTeam } from "@/lib/user-context";
+import { useTeamOwners } from "@/lib/hooks";
 
 const baseLinks = [
   { href: "/", label: "Home" },
@@ -14,22 +15,17 @@ const baseLinks = [
   { href: "/free-agency", label: "Free Agency" },
 ];
 
-function isCommissioner(owner: { user_name: string; team_name: string } | null): boolean {
-  if (!owner) return false;
-  return (
-    (owner.user_name === "Aureus" && owner.team_name === "Athens Olympians") ||
-    (owner.user_name === "AtlantaHawks" && owner.team_name === "Jalen Johnsons Jets")
-  );
-}
-
 export default function Nav() {
   const pathname = usePathname();
-  const { teamName, owner } = useUserTeam();
+  const { teamName, owner, isWhitelisted, impersonate } = useUserTeam();
+  const { owners } = useTeamOwners();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const links = isCommissioner(owner)
+  const links = isWhitelisted
     ? [...baseLinks, { href: "/commissioner", label: "Commissioner" }]
     : baseLinks;
+
+  const allTeams = Array.from(owners.keys()).sort();
 
   return (
     <nav className="bg-surface border-b border-border relative">
@@ -50,6 +46,19 @@ export default function Nav() {
                 <span className="text-text-dim">Playing as</span>{" "}
                 <span className="text-accent font-semibold">{owner?.user_name ?? teamName}</span>
               </span>
+            )}
+            {isWhitelisted && allTeams.length > 0 && (
+              <select
+                value={teamName ?? ""}
+                onChange={(e) => impersonate(e.target.value)}
+                className="bg-surface-light border border-border rounded-lg px-2 py-1.5 text-xs text-text focus:outline-none focus:ring-1 focus:ring-primary"
+                title="View as (commissioner only)"
+              >
+                <option value="" disabled>View as…</option>
+                {allTeams.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             )}
             <div className="flex gap-0.5 lg:gap-1">
               {links.map((link) => (
@@ -112,6 +121,18 @@ export default function Nav() {
                 <span className="text-text-dim">Playing as</span>{" "}
                 <span className="text-accent font-semibold">{owner?.user_name ?? teamName}</span>
               </div>
+            )}
+            {isWhitelisted && allTeams.length > 0 && (
+              <select
+                value={teamName ?? ""}
+                onChange={(e) => impersonate(e.target.value)}
+                className="bg-surface-light border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-1 focus:ring-primary mb-2"
+              >
+                <option value="" disabled>View as…</option>
+                {allTeams.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             )}
             {links.map((link) => (
               <Link

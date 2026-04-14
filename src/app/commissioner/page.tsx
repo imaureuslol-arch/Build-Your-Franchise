@@ -13,16 +13,8 @@ interface PlayerValues {
 
 const COMMISH_PASSWORD = "BYFCommishpwd@";
 
-function isCommissioner(owner: { user_name: string; team_name: string } | null): boolean {
-  if (!owner) return false;
-  return (
-    (owner.user_name === "Aureus" && owner.team_name === "Athens Olympians") ||
-    (owner.user_name === "AtlantaHawks" && owner.team_name === "Jalen Johnsons Jets")
-  );
-}
-
 export default function CommissionerPage() {
-  const { owner, isLoading: teamLoading } = useUserTeam();
+  const { isWhitelisted, isLoading: teamLoading } = useUserTeam();
   const { players, loading: playersLoading } = usePlayers();
   const [values, setValues] = useState<PlayerValues>({});
   const [valuesLoading, setValuesLoading] = useState(true);
@@ -43,6 +35,11 @@ export default function CommissionerPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
 
+  const [loggedInUsers, setLoggedInUsers] = useState<{ team_name: string; ip_count: number }[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState<string | null>(null);
+  const [logoutMsg, setLogoutMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
   useEffect(() => {
     fetch("/api/player-values")
       .then((r) => r.json())
@@ -51,10 +48,49 @@ export default function CommissionerPage() {
       .finally(() => setValuesLoading(false));
   }, []);
 
+  async function fetchLoggedInUsers() {
+    setUsersLoading(true);
+    try {
+      const res = await fetch("/api/commissioner/logout-user");
+      const data = await res.json();
+      if (res.ok) setLoggedInUsers(data.users ?? []);
+    } catch {
+      /* silent */
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (authenticated) fetchLoggedInUsers();
+  }, [authenticated]);
+
+  async function handleLogOutUser(teamName: string) {
+    if (!confirm(`Log out ${teamName}? This removes all IP mappings for that team.`)) return;
+    setLoggingOut(teamName);
+    setLogoutMsg(null);
+    try {
+      const res = await fetch("/api/commissioner/logout-user", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ team_name: teamName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Log out failed");
+      setLogoutMsg({ type: "ok", text: `Logged out ${teamName} (${data.removed} IPs removed).` });
+      fetchLoggedInUsers();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Log out failed";
+      setLogoutMsg({ type: "err", text: msg });
+    } finally {
+      setLoggingOut(null);
+    }
+  }
+
   const loading = teamLoading || playersLoading || valuesLoading;
 
-  // Gate: block non-commissioners
-  if (!loading && !isCommissioner(owner)) {
+  // Gate: block non-whitelisted IPs
+  if (!loading && !isWhitelisted) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-text-muted text-lg">Access denied.</p>
@@ -387,6 +423,59 @@ export default function CommissionerPage() {
               </ul>
             );
           })()}
+        </div>
+      </section>
+
+      {/* Logged-In Users */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            Logged-In Users
+          </h3>
+          <button
+            type="button"
+            onClick={fetchLoggedInUsers}
+            disabled={usersLoading}
+            className="text-xs text-text-muted hover:text-text transition-colors disabled:opacity-50"
+          >
+            {usersLoading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+        {logoutMsg && (
+          <p className={`text-sm ${logoutMsg.type === "ok" ? "text-cap-under" : "text-danger"}`}>
+            {logoutMsg.text}
+          </p>
+        )}
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          {loggedInUsers.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-text-dim text-center">
+              {usersLoading ? "Loading..." : "No users currently logged in."}
+            </p>
+          ) : (
+            <ul className="divide-y divide-border max-h-72 overflow-y-auto">
+              {loggedInUsers.map((u) => (
+                <li
+                  key={u.team_name}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5"
+                >
+                  <div>
+                    <span className="text-text text-sm font-medium">{u.team_name}</span>
+                    <span className="text-xs text-text-dim ml-2">
+                      {u.ip_count} IP{u.ip_count === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleLogOutUser(u.team_name)}
+                    disabled={loggingOut === u.team_name}
+                    className="px-3 py-1.5 rounded-lg bg-danger/10 border border-danger/40 text-danger text-xs font-medium hover:bg-danger/20 transition-colors disabled:opacity-50"
+                  >
+                    {loggingOut === u.team_name ? "Logging out..." : "Log Out"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
     </div>
