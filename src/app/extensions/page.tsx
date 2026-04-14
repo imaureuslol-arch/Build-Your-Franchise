@@ -21,6 +21,18 @@ interface PlayerStats {
   avgGamesPlayed: number;
 }
 
+const OPENING_LINES = [
+  "Alright, let's talk.",
+  "My agent said you'd be calling. What's the number?",
+  "Aight I'm listening. Don't lowball me.",
+  "Been waiting on this. Let's hear it.",
+  "Look, I like it here. But this is business. what's the offer?",
+  "Let's get this done. I got shootaround in an hour.",
+  "Straight up, just give me the number. I don't want to hear nothing else.",
+  "Sup boss. I think I proved my worth this season. So I'm expecting a bag.",
+  "Listen, I did everything coach asked. Played for the team. Now I need the team to do what's best for me."
+];
+
 interface ExtensionRecord {
   id: string;
   player_id: number;
@@ -132,8 +144,7 @@ export default function ExtensionsPage() {
     setChat([
       {
         role: "player",
-        content:
-          "Hey, I'm open to discussing an extension with you. I've got a number in mind, but let's see what you've got for me. Don't waste my time, I don't have all day.",
+        content: OPENING_LINES[Math.floor(Math.random() * OPENING_LINES.length)],
       },
     ]);
     setOffersUsed(0);

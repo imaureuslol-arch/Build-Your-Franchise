@@ -11,7 +11,7 @@ interface PlayerValues {
   [id: number]: { fairValue: number; age: number };
 }
 
-const COMMISH_PASSWORD = "BYFCommishpwd@";
+const COMMISH_PASSWORD = "BYFCommish";
 
 export default function CommissionerPage() {
   const { isWhitelisted, isLoading: teamLoading } = useUserTeam();
@@ -235,6 +235,23 @@ export default function CommissionerPage() {
     .filter((p) => p.name !== "Dead Cap" && values[p.id] != null)
     .map((p) => ({ player: p, ...values[p.id] }))
     .sort((a, b) => b.fairValue - a.fairValue);
+
+  const teamStrength = (() => {
+    const totals = new Map<string, { total: number; count: number }>();
+    for (const p of players) {
+      if (p.name === "Dead Cap") continue;
+      if (!p.team || p.team === "Free Agency") continue;
+      const fv = values[p.id]?.fairValue ?? 0;
+      const entry = totals.get(p.team) ?? { total: 0, count: 0 };
+      entry.total += fv;
+      entry.count += 1;
+      totals.set(p.team, entry);
+    }
+    return Array.from(totals.entries())
+      .map(([team, { total, count }]) => ({ team, total, count }))
+      .sort((a, b) => b.total - a.total);
+  })();
+  const maxTeamTotal = Math.max(1, ...teamStrength.map((t) => t.total));
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col lg:flex-row gap-6">
@@ -487,8 +504,50 @@ export default function CommissionerPage() {
       </div>
 
       {/* Fair Value sidebar */}
-      <aside className="lg:w-72 lg:shrink-0">
-        <div className="bg-surface border border-border rounded-xl overflow-hidden lg:sticky lg:top-4">
+      <aside className="lg:w-72 lg:shrink-0 space-y-4 lg:sticky lg:top-4 self-start">
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+              Team Strength
+            </h3>
+            <p className="text-xs text-text-dim mt-0.5">
+              Sum of roster fair values
+            </p>
+          </div>
+          <ul className="divide-y divide-border max-h-[50vh] overflow-y-auto">
+            {teamStrength.map(({ team, total, count }, i) => {
+              const pct = (total / maxTeamTotal) * 100;
+              return (
+                <li key={team} className="px-3 py-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs text-text-dim font-mono w-6 shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm text-text truncate flex-1 min-w-0">
+                      {team}
+                    </span>
+                    <span className="text-sm font-bold text-accent shrink-0 font-mono">
+                      ${Math.round(total)}M
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-surface-light rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-accent/60 rounded-full"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-text-dim w-8 text-right shrink-0">
+                      {count} plr
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
               Fair Value Rankings

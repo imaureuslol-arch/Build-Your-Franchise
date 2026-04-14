@@ -33,6 +33,13 @@ export default function TradesPageWrapper() {
 function TradesPage() {
   const { players: allPlayers, loading } = usePlayers();
   const searchParams = useSearchParams();
+  const [playerValues, setPlayerValues] = useState<Record<number, { fairValue: number; age: number }>>({});
+  useEffect(() => {
+    fetch("/api/player-values")
+      .then((r) => r.json())
+      .then((d) => setPlayerValues(d.values ?? {}))
+      .catch(() => {});
+  }, []);
   const [slots, setSlots] = useState<TradeSlot[]>([
     { team: "", playersOut: [], retainedSalary: 0 },
     { team: "", playersOut: [], retainedSalary: 0 },
@@ -207,6 +214,51 @@ function TradesPage() {
     return total;
   }
 
+  /**
+   * Per-player: fairValue + (fairValue - salary) = 2*FV - salary.
+   * Captures star power (absolute FV) plus contract efficiency (surplus),
+   * so a max-contract superstar still grades as a premium asset.
+   * Retention reduces effective incoming salary (same treatment as cap math).
+   * Missing FV contributes 0 to the FV sum. Returned in dollars.
+   */
+  function computeTradeValue(teamName: string): { value: number; missingFV: string[] } {
+    if (!teamName) return { value: 0, missingFV: [] };
+    const incoming = getPlayersIn(teamName);
+    const missingFV: string[] = [];
+    let fvSum = 0;
+    let salarySum = 0;
+    for (const p of incoming) {
+      const fv = playerValues[p.id]?.fairValue;
+      if (fv == null) {
+        if (p.name !== "Dead Cap") missingFV.push(p.name);
+      } else {
+        fvSum += fv * 1_000_000;
+      }
+      salarySum += getCurrentSalary(p) || 0;
+    }
+    const value = 2 * fvSum - salarySum + getIncomingRetained(teamName);
+    return { value, missingFV };
+  }
+
+  const activeSlots = slots.filter((s) => s.team);
+  const tradeValues = activeSlots.map((s) => ({
+    team: s.team,
+    ...computeTradeValue(s.team),
+  }));
+  const hasAnyIncoming = activeSlots.some((s) => getPlayersIn(s.team).length > 0);
+  const maxAbsValue = Math.max(1, ...tradeValues.map((tv) => Math.abs(tv.value)));
+  const valueSpread =
+    tradeValues.length > 1
+      ? Math.max(...tradeValues.map((tv) => tv.value)) -
+        Math.min(...tradeValues.map((tv) => tv.value))
+      : 0;
+  const fairnessLabel =
+    valueSpread < 20_000_000
+      ? { text: "Fair Trade", color: "text-cap-under" }
+      : valueSpread < 50_000_000
+      ? { text: "Slight Edge", color: "text-cap-yellow" }
+      : { text: "Lopsided", color: "text-cap-over" };
+
   function buildTradeTeams(): TradeTeam[] {
     return slots
       .filter((s) => s.team)
@@ -352,6 +404,61 @@ function TradesPage() {
           );
         })}
       </div>
+
+      {hasAnyIncoming && (() => {
+        const winner = tradeValues.reduce(
+          (best, tv) => (tv.value > best.value ? tv : best),
+          tradeValues[0]
+        );
+        const showWinner = valueSpread >= 20_000_000 && winner?.team;
+        // Fixed scale so small surpluses look small. $150M of surplus fills
+        // the half-bar; stretches if anyone actually exceeds that.
+        const scale = Math.max(150_000_000, maxAbsValue);
+        return (
+          <div className="mt-6 w-full max-w-2xl mx-auto bg-surface border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-text-muted">
+                Trade Fairness
+              </h3>
+              <span className={`text-sm font-bold ${fairnessLabel.color}`}>
+                {fairnessLabel.text}
+                {showWinner && (
+                  <span className="text-text-dim font-normal ml-2">
+                    ({winner.team} wins)
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="divide-y divide-border/50">
+              {tradeValues.map((tv) => {
+                const halfPct = Math.min(50, (Math.abs(tv.value) / scale) * 50);
+                const positive = tv.value >= 0;
+                return (
+                  <div key={tv.team} className="px-4 py-2.5">
+                    <div className="text-sm font-medium truncate mb-1">{tv.team}</div>
+                    <div className="relative h-2 bg-surface-light rounded-full overflow-hidden">
+                      <div className="absolute top-0 bottom-0 left-1/2 w-px bg-border/80" />
+                      <div
+                        className={`absolute top-0 bottom-0 ${
+                          positive
+                            ? "left-1/2 bg-cap-under/60"
+                            : "right-1/2 bg-cap-over/60"
+                        }`}
+                        style={{ width: `${halfPct}%` }}
+                      />
+                    </div>
+                    {tv.missingFV.length > 0 && (
+                      <p className="text-[10px] text-text-dim mt-1">
+                        No fair value for: {tv.missingFV.join(", ")}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="mt-6 flex flex-col items-center gap-4">
         <div className="flex flex-wrap justify-center gap-2 sm:gap-3 w-full">
