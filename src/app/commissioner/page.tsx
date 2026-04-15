@@ -62,8 +62,9 @@ export default function CommissionerPage() {
   }
 
   useEffect(() => {
-    if (authenticated || isWhitelisted) fetchLoggedInUsers();
-  }, [authenticated, isWhitelisted]);
+    // Logged-in users is super-commish only, so only fetch for whitelisted IPs.
+    if (isWhitelisted) fetchLoggedInUsers();
+  }, [isWhitelisted]);
 
   async function handleLogOutUser(teamName: string) {
     if (!confirm(`Log out ${teamName}? This removes all IP mappings for that team.`)) return;
@@ -88,15 +89,6 @@ export default function CommissionerPage() {
   }
 
   const loading = teamLoading || playersLoading || valuesLoading;
-
-  // Gate: block non-whitelisted IPs
-  if (!loading && !isWhitelisted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-text-muted text-lg">Access denied.</p>
-      </div>
-    );
-  }
 
   if (loading) {
     return (
@@ -449,7 +441,8 @@ export default function CommissionerPage() {
         </div>
       </section>
 
-      {/* Logged-In Users */}
+      {/* Logged-In Users — super-commish (whitelisted IP) only */}
+      {isWhitelisted && (
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
@@ -501,6 +494,7 @@ export default function CommissionerPage() {
           )}
         </div>
       </section>
+      )}
       </div>
 
       {/* Fair Value sidebar */}
