@@ -24,10 +24,11 @@ const BID_DISCOUNT_RATE = 0.25;
 
 function getWeightedValue(offer: Pick<FAOffer, "years" | "amounts">): number {
   const sorted = [...offer.years].sort((a, b) => a - b);
-  return sorted.reduce(
+  const raw = sorted.reduce(
     (sum, y, i) => sum + (offer.amounts[y] ?? 0) / Math.pow(1 + BID_DISCOUNT_RATE, i),
     0
   );
+  return Math.round(raw / 1_000_000) * 1_000_000;
 }
 
 interface FAOffer {
@@ -491,10 +492,18 @@ export default function FreeAgencyPage() {
                     {isViewing && (
                       <div className="p-4 bg-surface-light space-y-2 border-t border-border/30">
                         {offers.map((o) => (
-                          <div key={o.id} className="text-[10px] border-b border-border/20 pb-1 last:border-0">
+                          <div key={o.id} className="text-[10px] border-b border-border/20 pb-1.5 last:border-0 space-y-0.5">
                             <div className="flex justify-between font-bold">
                               <span>{o.userName}</span>
                               <span>{formatSalary(getWeightedValue(o))}</span>
+                            </div>
+                            <div className="font-mono text-text-muted leading-tight">
+                              {[...o.years].sort((a, b) => a - b).map((y) => (
+                                <div key={y} className="flex justify-between">
+                                  <span className="text-text-dim">{y}</span>
+                                  <span>{formatSalary(o.amounts[y])}</span>
+                                </div>
+                              ))}
                             </div>
                             <div className="flex justify-between text-text-dim/60">
                               <span>{o.years.length}yr</span>

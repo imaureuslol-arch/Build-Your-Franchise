@@ -509,68 +509,9 @@ export default function ExtensionsPage() {
             </div>
           </div>
 
-          {/* Extension History */}
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-bold">Extension History</h3>
-            </div>
-            <div className="max-h-[500px] overflow-y-auto">
-              {extensions.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-text-dim text-center">No extensions yet</p>
-              ) : (
-                <>
-                  {myExtensions.length > 0 && (
-                    <>
-                      <div className="px-4 py-2 bg-surface-light/50 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Your Team
-                      </div>
-                      {myExtensions.map((ext) => (
-                        <div key={ext.id} className="px-4 py-2.5 border-b border-border/50">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">{ext.player_name}</span>
-                            <span className={`text-xs font-semibold ${ext.accepted ? "text-cap-under" : "text-cap-over"}`}>
-                              {ext.accepted ? "Signed" : "Failed"}
-                            </span>
-                          </div>
-                          {ext.accepted && (
-                            <div className="text-xs text-text-muted mt-0.5">
-                              {ext.years.sort().map((y: number) => `${y}: ${formatSalary(ext.amounts[String(y)])}`).join(" · ")}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                  {leagueExtensions.length > 0 && (
-                    <>
-                      <div className="px-4 py-2 bg-surface-light/50 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        League
-                      </div>
-                      {leagueExtensions.map((ext) => (
-                        <div key={ext.id} className="px-4 py-2.5 border-b border-border/50">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">{ext.player_name}</span>
-                            <span className={`text-xs font-semibold ${ext.accepted ? "text-cap-under" : "text-cap-over"}`}>
-                              {ext.accepted ? "Signed" : "Failed"}
-                            </span>
-                          </div>
-                          <div className="text-xs text-text-dim mt-0.5">{ext.team_name}</div>
-                          {ext.accepted && (
-                            <div className="text-xs text-text-muted mt-0.5">
-                              {ext.years.sort().map((y: number) => `${y}: ${formatSalary(ext.amounts[String(y)])}`).join(" · ")}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
         </div>
 
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 flex flex-col gap-6">
           {!selectedPlayer ? (
             <div className="bg-surface rounded-xl border border-border flex items-center justify-center h-96 text-text-dim">
               Select a player to begin
@@ -733,6 +674,65 @@ export default function ExtensionsPage() {
               )}
             </div>
           )}
+
+          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-bold">Extension History</h3>
+            </div>
+            <div className="max-h-[500px] overflow-y-auto">
+              {extensions.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-text-dim text-center">No extensions yet</p>
+              ) : (
+                <>
+                  {myExtensions.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 bg-surface-light/50 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Your Team
+                      </div>
+                      {myExtensions.map((ext) => (
+                        <div key={ext.id} className="px-4 py-2.5 border-b border-border/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{ext.player_name}</span>
+                            <span className={`text-xs font-semibold ${ext.accepted ? "text-cap-under" : "text-cap-over"}`}>
+                              {ext.accepted ? "Signed" : "Failed"}
+                            </span>
+                          </div>
+                          {ext.accepted && (
+                            <div className="text-xs text-text-muted mt-0.5">
+                              {ext.years.sort().map((y: number) => `${y}: ${formatSalary(ext.amounts[String(y)])}`).join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {leagueExtensions.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 bg-surface-light/50 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        League
+                      </div>
+                      {leagueExtensions.map((ext) => (
+                        <div key={ext.id} className="px-4 py-2.5 border-b border-border/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{ext.player_name}</span>
+                            <span className={`text-xs font-semibold ${ext.accepted ? "text-cap-under" : "text-cap-over"}`}>
+                              {ext.accepted ? "Signed" : "Failed"}
+                            </span>
+                          </div>
+                          <div className="text-xs text-text-dim mt-0.5">{ext.team_name}</div>
+                          {ext.accepted && (
+                            <div className="text-xs text-text-muted mt-0.5">
+                              {ext.years.sort().map((y: number) => `${y}: ${formatSalary(ext.amounts[String(y)])}`).join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

@@ -96,11 +96,11 @@ export default function HomePage() {
           <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
             <div className="bg-cap-over/10 border border-cap-over/30 rounded-lg px-2 sm:px-4 py-2 text-center sm:text-left">
               <span className="text-cap-over font-bold text-xl sm:text-2xl">{overCount}</span>
-              <span className="text-text-muted text-xs sm:text-sm ml-1 sm:ml-2">Over Hard</span>
+              <span className="text-text-muted text-xs sm:text-sm ml-1 sm:ml-2">Over Hard Cap</span>
             </div>
             <div className="bg-cap-yellow/10 border border-cap-yellow/30 rounded-lg px-2 sm:px-4 py-2 text-center sm:text-left">
               <span className="text-cap-yellow font-bold text-xl sm:text-2xl">{yellowCount}</span>
-              <span className="text-text-muted text-xs sm:text-sm ml-1 sm:ml-2">Over Soft</span>
+              <span className="text-text-muted text-xs sm:text-sm ml-1 sm:ml-2">Over Soft Cap</span>
             </div>
             <div className="bg-cap-under/10 border border-cap-under/30 rounded-lg px-2 sm:px-4 py-2 text-center sm:text-left">
               <span className="text-cap-under font-bold text-xl sm:text-2xl">{underCount}</span>
