@@ -18,6 +18,17 @@ import {
 
 const MIN_OFFER_PER_YEAR = 4_000_000;
 const MAX_VARIANCE = 0.10; // 10%
+// Frontloaded contracts win ties. Each year out from the start discounts
+// 25%, so $100M over 2yr beats $100M over 4yr on the same total outlay.
+const BID_DISCOUNT_RATE = 0.25;
+
+function getWeightedValue(offer: Pick<FAOffer, "years" | "amounts">): number {
+  const sorted = [...offer.years].sort((a, b) => a - b);
+  return sorted.reduce(
+    (sum, y, i) => sum + (offer.amounts[y] ?? 0) / Math.pow(1 + BID_DISCOUNT_RATE, i),
+    0
+  );
+}
 
 interface FAOffer {
   id: string;
@@ -154,7 +165,7 @@ export default function FreeAgencyPage() {
       map.get(offer.playerId)!.push(offer);
     }
     for (const [, offers] of map) {
-      offers.sort((a, b) => b.totalValue - a.totalValue);
+      offers.sort((a, b) => getWeightedValue(b) - getWeightedValue(a));
     }
     return map;
   }, [offerHistory]);
@@ -323,9 +334,9 @@ export default function FreeAgencyPage() {
                           <span className="text-[10px] text-text-dim font-mono shrink-0">{player.ppg.toFixed(1)}</span>
                         )}
                       </div>
-                      {playerOffers && (
-                        <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ml-2">
-                          {playerOffers.length} BIDS
+                      {playerOffers && playerOffers[0] && (
+                        <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ml-2 font-mono">
+                          {formatSalary(getWeightedValue(playerOffers[0]))}
                         </span>
                       )}
                     </div>
@@ -409,6 +420,39 @@ export default function FreeAgencyPage() {
                 </div>
               )}
 
+              {offerYears.length > 0 && (() => {
+                const sortedYrs = [...offerYears].sort((a, b) => a - b);
+                const amts: { [y: number]: number } = {};
+                for (const y of sortedYrs) amts[y] = isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[y];
+                const myWeighted = getWeightedValue({ years: sortedYrs, amounts: amts });
+                const myTotal = sortedYrs.reduce((s, y) => s + amts[y], 0);
+                const existing = offersByPlayer.get(String(selectedPlayer.id)) ?? [];
+                const topWeighted = existing.length > 0 ? getWeightedValue(existing[0]) : 0;
+                const wouldWin = myWeighted > topWeighted;
+                const rank = existing.filter((o) => getWeightedValue(o) >= myWeighted).length + 1;
+                return (
+                  <div
+                    className={`rounded-lg p-3 mb-4 text-xs border ${
+                      wouldWin
+                        ? "bg-cap-under/10 border-cap-under/40 text-cap-under"
+                        : "bg-surface-light border-border text-text-muted"
+                    }`}
+                  >
+                    <div className="flex justify-between font-bold">
+                      <span>Your bid: {formatSalary(myWeighted)} weighted</span>
+                      <span className="font-mono">{formatSalary(myTotal)} total</span>
+                    </div>
+                    <div className="mt-1">
+                      {existing.length === 0
+                        ? "No other bids — you'd be the only one."
+                        : wouldWin
+                        ? `Would become the highest bid (current top: ${formatSalary(topWeighted)} weighted).`
+                        : `Would rank #${rank} of ${existing.length + 1}. Top bid is ${formatSalary(topWeighted)} weighted.`}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <button
                 onClick={handleSubmit}
                 disabled={errors.length > 0}
@@ -439,7 +483,10 @@ export default function FreeAgencyPage() {
                         <span>{top.playerName}</span>
                         <span className="text-primary">{offers.length} Bids</span>
                       </div>
-                      <div className="text-[10px] text-text-dim mt-1">High: {formatSalary(top.totalValue)}</div>
+                      <div className="text-[10px] text-text-dim mt-1">
+                        Top: {formatSalary(getWeightedValue(top))} weighted
+                        <span className="text-text-dim/60"> · {formatSalary(top.totalValue)} total</span>
+                      </div>
                     </button>
                     {isViewing && (
                       <div className="p-4 bg-surface-light space-y-2 border-t border-border/30">
@@ -447,7 +494,11 @@ export default function FreeAgencyPage() {
                           <div key={o.id} className="text-[10px] border-b border-border/20 pb-1 last:border-0">
                             <div className="flex justify-between font-bold">
                               <span>{o.userName}</span>
-                              <span>{formatSalary(o.totalValue)}</span>
+                              <span>{formatSalary(getWeightedValue(o))}</span>
+                            </div>
+                            <div className="flex justify-between text-text-dim/60">
+                              <span>{o.years.length}yr</span>
+                              <span>{formatSalary(o.totalValue)} total</span>
                             </div>
                           </div>
                         ))}

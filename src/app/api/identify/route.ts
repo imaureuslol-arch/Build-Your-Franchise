@@ -55,6 +55,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ip = extractIp(request);
   const userAgent = request.headers.get("user-agent") ?? null;
+  // Cloudflare populates this on every request routed through their edge.
+  const country = request.headers.get("cf-ipcountry") ?? null;
 
   let body: unknown;
   try {
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
   // Append-only login trail for auditing — never updates, every claim is a new row.
   await supabase
     .from("ip_login_history")
-    .insert({ ip, team_name, user_agent: userAgent });
+    .insert({ ip, team_name, user_agent: userAgent, country });
 
   return Response.json({ success: true, team: team_name });
 }

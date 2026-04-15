@@ -42,7 +42,7 @@ export default function CommissionerPage() {
   const [logoutMsg, setLogoutMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   // Super-commish-only: login history and banned IPs
-  type LoginRow = { id: number; ip: string; team_name: string; user_agent: string | null; created_at: string };
+  type LoginRow = { id: number; ip: string; team_name: string; user_agent: string | null; country: string | null; created_at: string };
   type BanRow = { ip: string; reason: string | null; banned_at: string };
   const [loginHistory, setLoginHistory] = useState<LoginRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -730,7 +730,7 @@ export default function CommissionerPage() {
                 onChange={(e) => setShowSuspiciousOnly(e.target.checked)}
                 className="accent-primary"
               />
-              IPs on &gt;1 team only
+              Teams across &gt;1 country only
             </label>
             <button
               type="button"
@@ -744,13 +744,16 @@ export default function CommissionerPage() {
         </div>
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           {(() => {
-            const ipTeams = new Map<string, Set<string>>();
+            // Group countries seen per team. Teams appearing from >1 country
+            // suggest account sharing / impersonation.
+            const teamCountries = new Map<string, Set<string>>();
             for (const row of loginHistory) {
-              if (!ipTeams.has(row.ip)) ipTeams.set(row.ip, new Set());
-              ipTeams.get(row.ip)!.add(row.team_name);
+              if (!row.country) continue;
+              if (!teamCountries.has(row.team_name)) teamCountries.set(row.team_name, new Set());
+              teamCountries.get(row.team_name)!.add(row.country);
             }
             const rows = showSuspiciousOnly
-              ? loginHistory.filter((r) => (ipTeams.get(r.ip)?.size ?? 0) > 1)
+              ? loginHistory.filter((r) => (teamCountries.get(r.team_name)?.size ?? 0) > 1)
               : loginHistory;
             const bannedSet = new Set(bans.map((b) => b.ip));
             if (rows.length === 0) {
@@ -763,8 +766,8 @@ export default function CommissionerPage() {
             return (
               <ul className="divide-y divide-border max-h-96 overflow-y-auto">
                 {rows.map((row) => {
-                  const teamCount = ipTeams.get(row.ip)?.size ?? 1;
-                  const isSuspicious = teamCount > 1;
+                  const countryCount = teamCountries.get(row.team_name)?.size ?? 0;
+                  const isSuspicious = countryCount > 1;
                   const isBanned = bannedSet.has(row.ip);
                   return (
                     <li
@@ -774,9 +777,14 @@ export default function CommissionerPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono text-xs text-text">{row.ip}</span>
+                          {row.country && (
+                            <span className="text-[10px] text-text-muted font-semibold tracking-wider">
+                              {row.country}
+                            </span>
+                          )}
                           {isSuspicious && (
                             <span className="text-[10px] text-cap-over font-semibold uppercase tracking-wider">
-                              {teamCount} teams
+                              {countryCount} countries
                             </span>
                           )}
                           {isBanned && (

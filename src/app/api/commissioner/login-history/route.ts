@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("ip_login_history")
-    .select("id, ip, team_name, user_agent, created_at")
+    .select("id, ip, team_name, user_agent, country, created_at")
     .order("created_at", { ascending: false })
     .limit(500);
 
