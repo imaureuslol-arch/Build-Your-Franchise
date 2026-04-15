@@ -8,11 +8,8 @@ import { useTeamOwners } from "@/lib/hooks";
 
 const baseLinks = [
   { href: "/", label: "Home" },
-  { href: "/rosters", label: "Rosters" },
   { href: "/trades", label: "Trade Machine" },
   { href: "/trade-finder", label: "Trade Finder" },
-  { href: "/extensions", label: "Extensions" },
-  { href: "/free-agency", label: "Free Agency" },
 ];
 
 // Sub-commissioner — can see the Commissioner tab (for data entry / rankings)

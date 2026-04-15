@@ -213,7 +213,8 @@ export default function ExtensionsPage() {
     )
       return;
 
-    const baseFV = playerStats.fairValue; // millions
+    // Floor at $2M — players worth less than that still demand the league minimum.
+    const baseFV = Math.max(2, playerStats.fairValue); // millions
     const maxSalary = isYoungPlayer ? YOUNG_MAX_SALARY : 80_000_000;
     // Cap fair value at the player's max salary tier
     const cappedFV = Math.min(baseFV, maxSalary / 1_000_000);

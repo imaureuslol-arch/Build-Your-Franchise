@@ -2,6 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import { usePlayers, useTeamOwners } from "@/lib/hooks";
 import {
@@ -50,6 +51,16 @@ export default function HomePage() {
     over: "bg-cap-over",
   };
 
+  const quickLinks: {
+    href: string;
+    label: string;
+    blurb: string;
+  }[] = [
+    { href: "/rosters", label: "Rosters", blurb: "Browse every team's roster and cap situation" },
+    { href: "/extensions", label: "Extensions", blurb: "Negotiate contract extensions with your players" },
+    { href: "/free-agency", label: "Free Agency", blurb: "Sign unrostered players sorted by FPPG" },
+  ];
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="text-center mb-8 sm:mb-10">
@@ -57,6 +68,23 @@ export default function HomePage() {
         <p className="text-text-muted text-sm sm:text-lg">
           Mock trades, offer extensions, and view rosters for your cap league
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+        {quickLinks.map((ql) => (
+          <Link
+            key={ql.href}
+            href={ql.href}
+            className="group bg-surface border border-border rounded-xl px-4 py-4 sm:py-5 hover:border-primary/60 hover:bg-surface-light/50 transition-colors"
+          >
+            <div className="text-base sm:text-lg font-bold text-text group-hover:text-primary transition-colors">
+              {ql.label}
+            </div>
+            <div className="text-xs sm:text-sm text-text-muted mt-1">
+              {ql.blurb}
+            </div>
+          </Link>
+        ))}
       </div>
 
       {loading ? (

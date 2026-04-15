@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useUserTeam } from "@/lib/user-context";
 import { usePlayers } from "@/lib/hooks";
 import { Player, formatSalary, getCurrentSalary } from "@/lib/types";
@@ -29,6 +29,7 @@ export default function CommissionerPage() {
   const [editFg3m, setEditFg3m] = useState("");
   const [editAge, setEditAge] = useState("");
   const [editGp, setEditGp] = useState("");
+  const [editFppg, setEditFppg] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [passwordInput, setPasswordInput] = useState("");
@@ -39,6 +40,12 @@ export default function CommissionerPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState<string | null>(null);
   const [logoutMsg, setLogoutMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  // Higher/lower guessing game state
+  const [gamePair, setGamePair] = useState<[Player, Player] | null>(null);
+  const [gameReveal, setGameReveal] = useState<"left" | "right" | null>(null);
+  const [gameStreak, setGameStreak] = useState(0);
+  const [gameBest, setGameBest] = useState(0);
 
   useEffect(() => {
     fetch("/api/player-values")
@@ -87,6 +94,27 @@ export default function CommissionerPage() {
       setLoggingOut(null);
     }
   }
+
+  const newGameRound = useCallback(() => {
+    const pool = players.filter((p) => p.name !== "Dead Cap" && values[p.id] != null);
+    if (pool.length < 2) return;
+    const a = Math.floor(Math.random() * pool.length);
+    let b = Math.floor(Math.random() * pool.length);
+    while (b === a) b = Math.floor(Math.random() * pool.length);
+    setGamePair([pool[a], pool[b]]);
+    setGameReveal(null);
+  }, [players, values]);
+
+  useEffect(() => {
+    const stored = parseInt(localStorage.getItem("commishGameBest") ?? "0", 10);
+    if (!isNaN(stored)) setGameBest(stored);
+  }, []);
+
+  useEffect(() => {
+    if (gamePair == null && players.length > 0 && Object.keys(values).length >= 2) {
+      newGameRound();
+    }
+  }, [gamePair, players, values, newGameRound]);
 
   const loading = teamLoading || playersLoading || valuesLoading;
 
@@ -155,6 +183,7 @@ export default function CommissionerPage() {
     setEditBlk("");
     setEditTov("");
     setEditFg3m("");
+    setEditFppg("");
     setEditGp(p.avg_gp != null ? String(p.avg_gp) : "");
     setEditAge(v?.age != null ? String(v.age) : "");
   }
@@ -183,13 +212,18 @@ export default function CommissionerPage() {
   }
 
   const computedFppg = calcFantasyPpg();
+  // Manual FPPG overrides the per-stat calc when filled. Lets the commish
+  // enter FPPG directly (or total ÷ GP) without filling every breakdown field.
+  const manualFppg = editFppg.trim() ? parseFloat(editFppg) : null;
+  const effectiveFppg =
+    manualFppg != null && !isNaN(manualFppg) ? manualFppg : computedFppg;
 
   async function handleSave() {
     if (!selectedPlayer) return;
     setSaving(true);
     setSaveMsg(null);
 
-    const ppg = computedFppg;
+    const ppg = effectiveFppg;
     const avg_gp = editGp.trim() ? parseFloat(editGp) : null;
     const age = editAge.trim() ? parseInt(editAge, 10) : null;
     const birthdate = age != null ? birthdateFromAge(age) : undefined;
@@ -228,6 +262,26 @@ export default function CommissionerPage() {
     .map((p) => ({ player: p, ...values[p.id] }))
     .sort((a, b) => b.fairValue - a.fairValue);
 
+  function handleGameGuess(side: "left" | "right") {
+    if (!gamePair || gameReveal) return;
+    const [left, right] = gamePair;
+    const leftFv = values[left.id]?.fairValue ?? 0;
+    const rightFv = values[right.id]?.fairValue ?? 0;
+    const higher = leftFv >= rightFv ? "left" : "right";
+    setGameReveal(side);
+    const correct = side === higher;
+    if (correct) {
+      const next = gameStreak + 1;
+      setGameStreak(next);
+      if (next > gameBest) {
+        setGameBest(next);
+        localStorage.setItem("commishGameBest", String(next));
+      }
+    } else {
+      setGameStreak(0);
+    }
+  }
+
   const teamStrength = (() => {
     const totals = new Map<string, { total: number; count: number }>();
     for (const p of players) {
@@ -249,6 +303,76 @@ export default function CommissionerPage() {
     <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col lg:flex-row gap-6">
       <div className="flex-1 min-w-0 space-y-8">
       <h1 className="text-2xl font-bold text-text">Commissioner Tools</h1>
+
+      {/* Higher or Lower game */}
+      {gamePair && (
+        <section className="bg-surface border border-border rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+                Higher or Lower
+              </h3>
+              <p className="text-xs text-text-dim mt-0.5">
+                Who has the higher fair value?
+              </p>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <span className="text-text-muted">
+                Streak <span className="text-accent font-bold text-base ml-1">{gameStreak}</span>
+              </span>
+              <span className="text-text-muted">
+                Best <span className="text-text font-bold text-base ml-1">{gameBest}</span>
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {(["left", "right"] as const).map((side) => {
+              const p = side === "left" ? gamePair[0] : gamePair[1];
+              const fv = values[p.id]?.fairValue ?? 0;
+              const otherFv =
+                (side === "left"
+                  ? values[gamePair[1].id]?.fairValue
+                  : values[gamePair[0].id]?.fairValue) ?? 0;
+              const isHigher = fv >= otherFv;
+              const picked = gameReveal === side;
+              let stateClass = "border-border hover:border-primary/60 hover:bg-surface-light/50";
+              if (gameReveal) {
+                if (isHigher) stateClass = "border-cap-under bg-cap-under/10";
+                else if (picked) stateClass = "border-cap-over bg-cap-over/10";
+                else stateClass = "border-border opacity-60";
+              }
+              return (
+                <button
+                  key={side}
+                  type="button"
+                  disabled={!!gameReveal}
+                  onClick={() => handleGameGuess(side)}
+                  className={`border rounded-xl px-4 py-5 text-left transition-colors ${stateClass}`}
+                >
+                  <div className="text-xs text-text-dim truncate">{p.team}</div>
+                  <div className="text-lg font-bold text-text truncate">{p.name}</div>
+                  {gameReveal ? (
+                    <div className="text-2xl font-bold text-accent mt-2 font-mono">
+                      ${fv}M
+                    </div>
+                  ) : (
+                    <div className="text-2xl font-bold text-text-dim mt-2 font-mono">?</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {gameReveal && (
+            <button
+              type="button"
+              onClick={newGameRound}
+              className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
+            >
+              Next Round
+            </button>
+          )}
+        </section>
+      )}
 
       {/* Search */}
       <section className="space-y-3">
@@ -326,7 +450,8 @@ export default function CommissionerPage() {
               Edit Player Stats
             </h3>
             <p className="text-xs text-text-dim">
-              Enter per-game stats — FPPG is calculated automatically.
+              Enter per-game stats — FPPG auto-calcs. Or type FPPG directly (or
+              total fantasy points ÷ GP) to skip the breakdown.
             </p>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {([
@@ -352,9 +477,14 @@ export default function CommissionerPage() {
               ))}
               <div>
                 <label className="block text-xs text-text-dim mb-1">FPPG</label>
-                <div className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-accent font-semibold">
-                  {computedFppg != null ? computedFppg : "—"}
-                </div>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={editFppg}
+                  onChange={(e) => setEditFppg(e.target.value)}
+                  placeholder={computedFppg != null ? String(computedFppg) : "—"}
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-accent font-semibold placeholder:text-accent/40 placeholder:font-normal focus:outline-none focus:border-primary"
+                />
               </div>
             </div>
 
