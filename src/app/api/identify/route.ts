@@ -3,8 +3,6 @@ import { createClient } from "@supabase/supabase-js";
 
 function getSupabaseServer() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  // Prefer service role key (server-only) so RLS doesn't block writes.
-  // Falls back to anon key if the service key isn't set.
   const key =
     process.env.SUPABASE_SERVICE_ROLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -12,7 +10,6 @@ function getSupabaseServer() {
 }
 
 function extractIp(request: NextRequest): string {
-  // Cloudflare sets cf-connecting-ip; Vercel sets x-forwarded-for
   const cfIp = request.headers.get("cf-connecting-ip");
   if (cfIp) return cfIp.trim();
   const forwarded = request.headers.get("x-forwarded-for");
@@ -22,9 +19,25 @@ function extractIp(request: NextRequest): string {
   return "unknown";
 }
 
+async function isBanned(
+  supabase: ReturnType<typeof getSupabaseServer>,
+  ip: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("banned_ips")
+    .select("ip")
+    .eq("ip", ip)
+    .maybeSingle();
+  return !!data;
+}
+
 export async function GET(request: NextRequest) {
   const ip = extractIp(request);
   const supabase = getSupabaseServer();
+
+  if (await isBanned(supabase, ip)) {
+    return Response.json({ team: null, banned: true });
+  }
 
   const { data, error } = await supabase
     .from("ip_team_mappings")
@@ -36,11 +49,12 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json({ team: data?.team_name ?? null });
+  return Response.json({ team: data?.team_name ?? null, banned: false });
 }
 
 export async function POST(request: NextRequest) {
   const ip = extractIp(request);
+  const userAgent = request.headers.get("user-agent") ?? null;
 
   let body: unknown;
   try {
@@ -60,6 +74,10 @@ export async function POST(request: NextRequest) {
 
   const supabase = getSupabaseServer();
 
+  if (await isBanned(supabase, ip)) {
+    return Response.json({ error: "Access revoked" }, { status: 403 });
+  }
+
   const { error } = await supabase
     .from("ip_team_mappings")
     .upsert({ ip, team_name }, { onConflict: "ip" });
@@ -67,6 +85,11 @@ export async function POST(request: NextRequest) {
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
+
+  // Append-only login trail for auditing — never updates, every claim is a new row.
+  await supabase
+    .from("ip_login_history")
+    .insert({ ip, team_name, user_agent: userAgent });
 
   return Response.json({ success: true, team: team_name });
 }

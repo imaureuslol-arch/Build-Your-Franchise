@@ -14,7 +14,7 @@ interface PlayerValues {
 const COMMISH_PASSWORD = "BYFCommish";
 
 export default function CommissionerPage() {
-  const { isWhitelisted, isLoading: teamLoading } = useUserTeam();
+  const { isWhitelisted, isSubCommish, isLoading: teamLoading } = useUserTeam();
   const { players, loading: playersLoading } = usePlayers();
   const [values, setValues] = useState<PlayerValues>({});
   const [valuesLoading, setValuesLoading] = useState(true);
@@ -40,6 +40,17 @@ export default function CommissionerPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState<string | null>(null);
   const [logoutMsg, setLogoutMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  // Super-commish-only: login history and banned IPs
+  type LoginRow = { id: number; ip: string; team_name: string; user_agent: string | null; created_at: string };
+  type BanRow = { ip: string; reason: string | null; banned_at: string };
+  const [loginHistory, setLoginHistory] = useState<LoginRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [showSuspiciousOnly, setShowSuspiciousOnly] = useState(false);
+  const [bans, setBans] = useState<BanRow[]>([]);
+  const [bansLoading, setBansLoading] = useState(false);
+  const [banBusy, setBanBusy] = useState<string | null>(null);
+  const [banMsg, setBanMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   // Higher/lower guessing game state
   const [gamePair, setGamePair] = useState<[Player, Player] | null>(null);
@@ -72,6 +83,84 @@ export default function CommissionerPage() {
     // Logged-in users is super-commish only, so only fetch for whitelisted IPs.
     if (isWhitelisted) fetchLoggedInUsers();
   }, [isWhitelisted]);
+
+  async function fetchLoginHistory() {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/commissioner/login-history");
+      const data = await res.json();
+      if (res.ok) setLoginHistory(data.history ?? []);
+    } catch {
+      /* silent */
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function fetchBans() {
+    setBansLoading(true);
+    try {
+      const res = await fetch("/api/commissioner/banned-ips");
+      const data = await res.json();
+      if (res.ok) setBans(data.bans ?? []);
+    } catch {
+      /* silent */
+    } finally {
+      setBansLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (isWhitelisted) {
+      fetchLoginHistory();
+      fetchBans();
+    }
+  }, [isWhitelisted]);
+
+  async function handleBanIp(ip: string) {
+    const reason = prompt(`Ban ${ip}? Optional reason:`);
+    if (reason === null) return;
+    setBanBusy(ip);
+    setBanMsg(null);
+    try {
+      const res = await fetch("/api/commissioner/banned-ips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip, reason: reason || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Ban failed");
+      setBanMsg({ type: "ok", text: `Banned ${ip}.` });
+      fetchBans();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Ban failed";
+      setBanMsg({ type: "err", text: msg });
+    } finally {
+      setBanBusy(null);
+    }
+  }
+
+  async function handleUnbanIp(ip: string) {
+    if (!confirm(`Unban ${ip}?`)) return;
+    setBanBusy(ip);
+    setBanMsg(null);
+    try {
+      const res = await fetch("/api/commissioner/banned-ips", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Unban failed");
+      setBanMsg({ type: "ok", text: `Unbanned ${ip}.` });
+      fetchBans();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unban failed";
+      setBanMsg({ type: "err", text: msg });
+    } finally {
+      setBanBusy(null);
+    }
+  }
 
   async function handleLogOutUser(teamName: string) {
     if (!confirm(`Log out ${teamName}? This removes all IP mappings for that team.`)) return;
@@ -126,8 +215,8 @@ export default function CommissionerPage() {
     );
   }
 
-  // Password gate — skipped for whitelisted commissioner IPs
-  if (!authenticated && !isWhitelisted) {
+  // Password gate — skipped for whitelisted commissioner IPs and sub-commish IPs
+  if (!authenticated && !isWhitelisted && !isSubCommish) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="bg-surface border border-border rounded-xl p-6 w-full max-w-sm space-y-4">
@@ -313,7 +402,7 @@ export default function CommissionerPage() {
                 Higher or Lower
               </h3>
               <p className="text-xs text-text-dim mt-0.5">
-                Who has the higher fair value?
+                Who has the higher value?
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs">
@@ -617,6 +706,161 @@ export default function CommissionerPage() {
                     className="px-3 py-1.5 rounded-lg bg-danger/10 border border-danger/40 text-danger text-xs font-medium hover:bg-danger/20 transition-colors disabled:opacity-50"
                   >
                     {loggingOut === u.team_name ? "Logging out..." : "Log Out"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+      )}
+
+      {/* Login History — super-commish only */}
+      {isWhitelisted && (
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            Login History
+          </h3>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showSuspiciousOnly}
+                onChange={(e) => setShowSuspiciousOnly(e.target.checked)}
+                className="accent-primary"
+              />
+              IPs on &gt;1 team only
+            </label>
+            <button
+              type="button"
+              onClick={fetchLoginHistory}
+              disabled={historyLoading}
+              className="text-xs text-text-muted hover:text-text transition-colors disabled:opacity-50"
+            >
+              {historyLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          {(() => {
+            const ipTeams = new Map<string, Set<string>>();
+            for (const row of loginHistory) {
+              if (!ipTeams.has(row.ip)) ipTeams.set(row.ip, new Set());
+              ipTeams.get(row.ip)!.add(row.team_name);
+            }
+            const rows = showSuspiciousOnly
+              ? loginHistory.filter((r) => (ipTeams.get(r.ip)?.size ?? 0) > 1)
+              : loginHistory;
+            const bannedSet = new Set(bans.map((b) => b.ip));
+            if (rows.length === 0) {
+              return (
+                <p className="px-4 py-6 text-sm text-text-dim text-center">
+                  {historyLoading ? "Loading..." : "No login history."}
+                </p>
+              );
+            }
+            return (
+              <ul className="divide-y divide-border max-h-96 overflow-y-auto">
+                {rows.map((row) => {
+                  const teamCount = ipTeams.get(row.ip)?.size ?? 1;
+                  const isSuspicious = teamCount > 1;
+                  const isBanned = bannedSet.has(row.ip);
+                  return (
+                    <li
+                      key={row.id}
+                      className="flex items-center justify-between gap-3 px-4 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs text-text">{row.ip}</span>
+                          {isSuspicious && (
+                            <span className="text-[10px] text-cap-over font-semibold uppercase tracking-wider">
+                              {teamCount} teams
+                            </span>
+                          )}
+                          {isBanned && (
+                            <span className="text-[10px] text-danger font-semibold uppercase tracking-wider">
+                              Banned
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-text-muted mt-0.5">
+                          {row.team_name}
+                          <span className="text-text-dim ml-2">
+                            {new Date(row.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      {!isBanned && (
+                        <button
+                          type="button"
+                          onClick={() => handleBanIp(row.ip)}
+                          disabled={banBusy === row.ip}
+                          className="px-3 py-1.5 rounded-lg bg-danger/10 border border-danger/40 text-danger text-xs font-medium hover:bg-danger/20 transition-colors disabled:opacity-50 shrink-0"
+                        >
+                          {banBusy === row.ip ? "..." : "Ban IP"}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
+        </div>
+      </section>
+      )}
+
+      {/* Banned IPs — super-commish only */}
+      {isWhitelisted && (
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            Banned IPs
+          </h3>
+          <button
+            type="button"
+            onClick={fetchBans}
+            disabled={bansLoading}
+            className="text-xs text-text-muted hover:text-text transition-colors disabled:opacity-50"
+          >
+            {bansLoading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+        {banMsg && (
+          <p className={`text-sm ${banMsg.type === "ok" ? "text-cap-under" : "text-danger"}`}>
+            {banMsg.text}
+          </p>
+        )}
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          {bans.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-text-dim text-center">
+              {bansLoading ? "Loading..." : "No banned IPs."}
+            </p>
+          ) : (
+            <ul className="divide-y divide-border max-h-72 overflow-y-auto">
+              {bans.map((b) => (
+                <li
+                  key={b.ip}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-mono text-xs text-text">{b.ip}</div>
+                    <div className="text-xs text-text-muted mt-0.5">
+                      {b.reason || <span className="text-text-dim italic">No reason</span>}
+                      <span className="text-text-dim ml-2">
+                        {new Date(b.banned_at).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUnbanIp(b.ip)}
+                    disabled={banBusy === b.ip}
+                    className="px-3 py-1.5 rounded-lg bg-surface-light border border-border text-text-muted text-xs font-medium hover:text-text transition-colors disabled:opacity-50 shrink-0"
+                  >
+                    {banBusy === b.ip ? "..." : "Unban"}
                   </button>
                 </li>
               ))}

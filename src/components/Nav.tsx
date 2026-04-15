@@ -15,22 +15,11 @@ const baseLinks = [
   { href: "/free-agency", label: "Free Agency" },
 ];
 
-// Sub-commissioner — can see the Commissioner tab (for data entry / rankings)
-// but not the super-commish-only sections on the page itself.
-const SUB_COMMISH_USERNAME = "atlantahawks";
-const SUB_COMMISH_TEAM = "jalenjohnsonsjets";
-
 export default function Nav() {
   const pathname = usePathname();
-  const { teamName, owner, isWhitelisted, impersonate } = useUserTeam();
+  const { teamName, owner, isWhitelisted, isSubCommish, impersonate } = useUserTeam();
   const { owners } = useTeamOwners();
   const [menuOpen, setMenuOpen] = useState(false);
-
-  const normalize = (s: string | null | undefined) =>
-    (s ?? "").toLowerCase().replace(/\s+/g, "");
-  const isSubCommish =
-    normalize(owner?.user_name) === SUB_COMMISH_USERNAME ||
-    normalize(teamName) === SUB_COMMISH_TEAM;
 
   const links =
     isWhitelisted || isSubCommish

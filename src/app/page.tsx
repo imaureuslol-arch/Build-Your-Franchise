@@ -58,7 +58,7 @@ export default function HomePage() {
   }[] = [
     { href: "/rosters", label: "Rosters", blurb: "Browse every team's roster and cap situation" },
     { href: "/extensions", label: "Extensions", blurb: "Negotiate contract extensions with your players" },
-    { href: "/free-agency", label: "Free Agency", blurb: "Sign unrostered players sorted by FPPG" },
+    { href: "/free-agency", label: "Free Agency", blurb: "Sign free agents" },
   ];
 
   return (
