@@ -269,7 +269,7 @@ export default function RostersPage() {
                       <div key={y} className={`rounded-lg border p-2 text-center ${capStatusBg[yStatus]}`}>
                         <div className="text-[10px] text-text-dim font-medium">{y}</div>
                         <div className={`text-xs sm:text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
-                          {formatSalary(yCap)}
+                          {formatSalary(yCap)} <span className="text-[10px] font-normal text-text-dim">(HC: {formatSalary(getHardCap(y))})</span>
                         </div>
                         {yDeadCap !== 0 && (
                           <div className="text-[10px] font-mono text-text-dim">
