@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "./supabase";
-import { Player, PlayerRaw, TeamOwner, parsePlayer } from "./types";
+import { Player, TeamOwner, parsePlayer } from "./types";
 
 export function usePlayers() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -21,7 +21,7 @@ export function usePlayers() {
         return;
       }
 
-      setPlayers((data as PlayerRaw[]).map(parsePlayer));
+      setPlayers(data.map(parsePlayer));
       setLoading(false);
     }
     fetch();

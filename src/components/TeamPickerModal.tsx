@@ -4,23 +4,34 @@ import { useState } from "react";
 import { useTeamOwners } from "@/lib/hooks";
 
 interface Props {
-  onSelect: (teamName: string) => Promise<void>;
+  /** Resolves to an error message on failure, or null on success. */
+  onSelect: (teamName: string, pin: string) => Promise<string | null>;
 }
 
 export default function TeamPickerModal({ onSelect }: Props) {
   const { owners, loading } = useTeamOwners();
   const [selected, setSelected] = useState("");
+  const [pin, setPin] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const teamList = Array.from(owners.values()).sort((a, b) =>
     a.team_name.localeCompare(b.team_name)
   );
 
+  const canSubmit = selected !== "" && pin.length === 4 && !saving;
+
   async function handleConfirm() {
-    if (!selected || saving) return;
+    if (!canSubmit) return;
     setSaving(true);
-    await onSelect(selected);
-    setSaving(false);
+    setError(null);
+    const message = await onSelect(selected, pin);
+    if (message) {
+      setError(message);
+      setPin("");
+      setSaving(false);
+    }
+    // On success the modal unmounts, so no need to reset state.
   }
 
   return (
@@ -28,9 +39,8 @@ export default function TeamPickerModal({ onSelect }: Props) {
       <div className="bg-surface border border-border rounded-xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
         <h2 className="text-2xl sm:text-3xl font-bold text-text mb-2 font-[family-name:var(--font-blocky)] tracking-wide uppercase">Welcome</h2>
         <p className="text-text-muted mb-6 text-sm leading-relaxed">
-          Select the team you own. This gets locked to your IP address — you'll
-          only be able to negotiate extensions and make free-agent offers as
-          this team.
+          Select your team and enter the 4-digit PIN the commissioner gave you.
+          This device gets remembered, so you&apos;ll only have to do this once.
         </p>
 
         {loading ? (
@@ -39,8 +49,8 @@ export default function TeamPickerModal({ onSelect }: Props) {
           <>
             <select
               value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              className="w-full bg-surface-light border border-border rounded-lg px-4 py-3 text-text text-sm mb-4 outline-none focus:ring-1 focus:ring-primary"
+              onChange={(e) => { setSelected(e.target.value); setError(null); }}
+              className="w-full bg-surface-light border border-border rounded-lg px-4 py-3 text-text text-sm mb-3 outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">— Select your team —</option>
               {teamList.map((o) => (
@@ -50,12 +60,31 @@ export default function TeamPickerModal({ onSelect }: Props) {
               ))}
             </select>
 
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={4}
+              value={pin}
+              onChange={(e) => {
+                setPin(e.target.value.replace(/\D/g, "").slice(0, 4));
+                setError(null);
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleConfirm(); }}
+              placeholder="4-digit PIN"
+              className="w-full bg-surface-light border border-border rounded-lg px-4 py-3 text-text text-sm mb-4 tracking-[0.5em] text-center outline-none focus:ring-1 focus:ring-primary"
+            />
+
+            {error && (
+              <p className="text-danger text-sm mb-4 text-center">{error}</p>
+            )}
+
             <button
               onClick={handleConfirm}
-              disabled={!selected || saving}
+              disabled={!canSubmit}
               className="w-full bg-primary text-white font-semibold py-3 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary-hover transition-colors text-sm"
             >
-              {saving ? "Saving…" : "Confirm My Team"}
+              {saving ? "Checking…" : "Log In"}
             </button>
           </>
         )}

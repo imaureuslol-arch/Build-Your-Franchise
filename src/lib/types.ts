@@ -1,15 +1,13 @@
-export interface PlayerRaw {
-  id: number;
-  name: string;
-  team: string;
-  contract_27: string | null;
-  contract_28: string | null;
-  contract_29: string | null;
-  contract_30: string | null;
-  user_name: string | null;
-  ppg: number | null;
-  avg_gp: number | null;
-}
+import type { PlayersRow } from "./database.types";
+
+/**
+ * A row straight out of the `players` table.
+ *
+ * This used to declare a `user_name` column that the table doesn't actually
+ * have (nothing read it — `parsePlayer` ignored it), and to omit `birthdate`,
+ * which it does have. Aliasing the generated row type keeps the two in sync.
+ */
+export type PlayerRaw = PlayersRow;
 
 export interface Player {
   id: number;
@@ -143,8 +141,9 @@ export function parseSalary(value: string | null): number | null {
 export function parsePlayer(raw: PlayerRaw): Player {
   return {
     id: raw.id,
-    name: raw.name,
-    team: raw.team,
+    // name/team are nullable in Postgres, though in practice never null.
+    name: raw.name ?? "",
+    team: raw.team ?? "",
     contract_27: parseSalary(raw.contract_27),
     contract_28: parseSalary(raw.contract_28),
     contract_29: parseSalary(raw.contract_29),

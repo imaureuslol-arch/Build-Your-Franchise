@@ -1,15 +1,22 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getSupabaseServer() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(url, key, { auth: { persistSession: false } });
-}
+import {
+  getSupabaseServer,
+  isCommissioner,
+  isSubCommissioner,
+} from "@/lib/server-auth";
+import type { PlayersRow } from "@/lib/database.types";
 
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseServer();
+
+  // Stat edits are open to both commish tiers, matching the UI.
+  const allowed =
+    (await isCommissioner(supabase, request)) ||
+    (await isSubCommissioner(supabase, request));
+  if (!allowed) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = await request.json();
   const { playerId, ppg, avg_gp, birthdate } = body as {
     playerId: number;
@@ -22,9 +29,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "playerId is required" }, { status: 400 });
   }
 
-  const supabase = getSupabaseServer();
-
-  const updates: Record<string, number | string | null> = {};
+  const updates: Partial<PlayersRow> = {};
   if (ppg !== undefined) updates.ppg = ppg;
   if (avg_gp !== undefined) updates.avg_gp = avg_gp;
   if (birthdate !== undefined) updates.birthdate = birthdate;

@@ -11,10 +11,8 @@ interface PlayerValues {
   [id: number]: { fairValue: number; age: number };
 }
 
-const COMMISH_PASSWORD = "BYFCommish";
-
 export default function CommissionerPage() {
-  const { isWhitelisted, isSubCommish, isLoading: teamLoading } = useUserTeam();
+  const { isWhitelisted, isSubCommish, isLoading: teamLoading, refresh } = useUserTeam();
   const { players, loading: playersLoading } = usePlayers();
   const [values, setValues] = useState<PlayerValues>({});
   const [valuesLoading, setValuesLoading] = useState(true);
@@ -32,17 +30,28 @@ export default function CommissionerPage() {
   const [editFppg, setEditFppg] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [authenticated, setAuthenticated] = useState(false);
-  const [passwordError, setPasswordError] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinSubmitting, setPinSubmitting] = useState(false);
 
   const [loggedInUsers, setLoggedInUsers] = useState<{ team_name: string; ip_count: number }[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState<string | null>(null);
   const [logoutMsg, setLogoutMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
+  // Super-commish-only: team PIN management
+  type TeamPinRow = { team_name: string; user_name: string; has_pin: boolean; updated_at: string | null };
+  const [teamPins, setTeamPins] = useState<TeamPinRow[]>([]);
+  const [teamPinsLoading, setTeamPinsLoading] = useState(false);
+  const [pinBusy, setPinBusy] = useState<string | null>(null);
+  const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({});
+  // Plaintext PINs live here only until the page reloads — the server returns
+  // each one exactly once, so this is the only chance to copy it.
+  const [revealedPins, setRevealedPins] = useState<Record<string, string>>({});
+  const [pinMsg, setPinMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
   // Super-commish-only: login history and banned IPs
-  type LoginRow = { id: number; ip: string; team_name: string; user_agent: string | null; country: string | null; created_at: string };
+  type LoginRow = { id: number; ip: string; team_name: string; user_agent: string | null; country: string | null; success: boolean; created_at: string };
   type BanRow = { ip: string; reason: string | null; banned_at: string };
   const [loginHistory, setLoginHistory] = useState<LoginRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -84,6 +93,70 @@ export default function CommissionerPage() {
     if (isWhitelisted) fetchLoggedInUsers();
   }, [isWhitelisted]);
 
+  async function fetchTeamPins() {
+    setTeamPinsLoading(true);
+    try {
+      const res = await fetch("/api/commissioner/team-pins");
+      const data = await res.json();
+      if (res.ok) setTeamPins(data.teams ?? []);
+    } catch {
+      /* silent */
+    } finally {
+      setTeamPinsLoading(false);
+    }
+  }
+
+  /** Pass a 4-digit pin to set it, or omit to have the server generate one. */
+  async function handleSetPin(teamName: string, pin?: string) {
+    setPinBusy(teamName);
+    setPinMsg(null);
+    try {
+      const res = await fetch("/api/commissioner/team-pins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ team_name: teamName, pin: pin ?? "" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not set PIN");
+      setRevealedPins((prev) => ({ ...prev, [teamName]: data.pin }));
+      setPinDrafts((prev) => ({ ...prev, [teamName]: "" }));
+      setPinMsg({ type: "ok", text: `${teamName}: PIN is now ${data.pin} — copy it now, it won't be shown again.` });
+      fetchTeamPins();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not set PIN";
+      setPinMsg({ type: "err", text: msg });
+    } finally {
+      setPinBusy(null);
+    }
+  }
+
+  async function handleClearPin(teamName: string) {
+    if (!confirm(`Remove ${teamName}'s PIN? They won't be able to log in until you set a new one.`)) return;
+    setPinBusy(teamName);
+    setPinMsg(null);
+    try {
+      const res = await fetch("/api/commissioner/team-pins", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ team_name: teamName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not remove PIN");
+      setRevealedPins((prev) => {
+        const next = { ...prev };
+        delete next[teamName];
+        return next;
+      });
+      setPinMsg({ type: "ok", text: `Removed ${teamName}'s PIN.` });
+      fetchTeamPins();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not remove PIN";
+      setPinMsg({ type: "err", text: msg });
+    } finally {
+      setPinBusy(null);
+    }
+  }
+
   async function fetchLoginHistory() {
     setHistoryLoading(true);
     try {
@@ -114,6 +187,7 @@ export default function CommissionerPage() {
     if (isWhitelisted) {
       fetchLoginHistory();
       fetchBans();
+      fetchTeamPins();
     }
   }, [isWhitelisted]);
 
@@ -184,6 +258,35 @@ export default function CommissionerPage() {
     }
   }
 
+  async function handlePinLogin() {
+    if (pinSubmitting || pinInput.length < 6) return;
+    setPinSubmitting(true);
+    setPinError(null);
+    try {
+      const res = await fetch("/api/identify/commish-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const left =
+          typeof data?.attemptsLeft === "number" && data.attemptsLeft > 0
+            ? ` ${data.attemptsLeft} attempt${data.attemptsLeft === 1 ? "" : "s"} left.`
+            : "";
+        setPinError((data?.error ?? "Incorrect PIN.") + left);
+        setPinInput("");
+        return;
+      }
+      // Roles come from the server — pull them so Nav and the gate update.
+      await refresh();
+    } catch {
+      setPinError("Network error — try again.");
+    } finally {
+      setPinSubmitting(false);
+    }
+  }
+
   const newGameRound = useCallback(() => {
     const pool = players.filter((p) => p.name !== "Dead Cap" && values[p.id] != null);
     if (pool.length < 2) return;
@@ -215,38 +318,40 @@ export default function CommissionerPage() {
     );
   }
 
-  // Password gate — skipped for whitelisted commissioner IPs and sub-commish IPs
-  if (!authenticated && !isWhitelisted && !isSubCommish) {
+  // PIN gate — skipped once the IP/cookie is whitelisted as commish or sub-commish.
+  // The PIN is checked server-side; a correct one whitelists this device for good.
+  if (!isWhitelisted && !isSubCommish) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="bg-surface border border-border rounded-xl p-6 w-full max-w-sm space-y-4">
           <h1 className="text-xl font-bold text-text text-center">Commissioner Tools</h1>
-          <p className="text-sm text-text-muted text-center">Enter the commissioner password to continue.</p>
+          <p className="text-sm text-text-muted text-center">
+            Enter your commissioner PIN. This device is remembered afterwards.
+          </p>
           <input
             type="password"
-            value={passwordInput}
-            onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                if (passwordInput === COMMISH_PASSWORD) setAuthenticated(true);
-                else setPasswordError(true);
-              }
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={8}
+            value={pinInput}
+            onChange={(e) => {
+              setPinInput(e.target.value.replace(/\D/g, "").slice(0, 8));
+              setPinError(null);
             }}
-            placeholder="Password"
-            className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+            onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
+            placeholder="PIN"
+            className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text text-center tracking-[0.4em] placeholder:tracking-normal placeholder:text-text-dim focus:outline-none focus:border-primary"
           />
-          {passwordError && (
-            <p className="text-sm text-danger text-center">Incorrect password.</p>
+          {pinError && (
+            <p className="text-sm text-danger text-center">{pinError}</p>
           )}
           <button
             type="button"
-            onClick={() => {
-              if (passwordInput === COMMISH_PASSWORD) setAuthenticated(true);
-              else setPasswordError(true);
-            }}
-            className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
+            onClick={handlePinLogin}
+            disabled={pinInput.length < 6 || pinSubmitting}
+            className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Enter
+            {pinSubmitting ? "Checking…" : "Enter"}
           </button>
         </div>
       </div>
@@ -660,6 +765,104 @@ export default function CommissionerPage() {
         </div>
       </section>
 
+      {/* Team PINs — super-commish only. Teams come from team_owners, so
+          anyone who joins or leaves the league shows up here automatically. */}
+      {isWhitelisted && (
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            Team PINs
+          </h3>
+          <button
+            type="button"
+            onClick={fetchTeamPins}
+            disabled={teamPinsLoading}
+            className="text-xs text-text-muted hover:text-text transition-colors disabled:opacity-50"
+          >
+            {teamPinsLoading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+        <p className="text-xs text-text-dim">
+          Type 4 digits and hit Set, or leave it blank to generate one. A PIN is
+          shown once here and never again — copy it before you leave the page.
+          Teams without a PIN can&apos;t log in.
+        </p>
+        {pinMsg && (
+          <p className={`text-sm ${pinMsg.type === "ok" ? "text-cap-under" : "text-danger"}`}>
+            {pinMsg.text}
+          </p>
+        )}
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          {teamPins.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-text-dim text-center">
+              {teamPinsLoading ? "Loading..." : "No teams found."}
+            </p>
+          ) : (
+            <ul className="divide-y divide-border max-h-96 overflow-y-auto">
+              {teamPins.map((t) => (
+                <li
+                  key={t.team_name}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap"
+                >
+                  <div className="min-w-0">
+                    <span className="text-text text-sm font-medium">{t.team_name}</span>
+                    <span className="text-xs text-text-dim ml-2">{t.user_name}</span>
+                    {revealedPins[t.team_name] ? (
+                      <span className="text-xs font-mono ml-2 px-1.5 py-0.5 rounded bg-primary/15 text-primary">
+                        {revealedPins[t.team_name]}
+                      </span>
+                    ) : t.has_pin ? (
+                      <span className="text-xs text-cap-under ml-2">PIN set</span>
+                    ) : (
+                      <span className="text-xs text-danger ml-2">No PIN</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="----"
+                      value={pinDrafts[t.team_name] ?? ""}
+                      onChange={(e) =>
+                        setPinDrafts((prev) => ({
+                          ...prev,
+                          [t.team_name]: e.target.value.replace(/\D/g, ""),
+                        }))
+                      }
+                      className="w-16 px-2 py-1.5 rounded-lg bg-background border border-border text-text text-xs text-center font-mono tracking-widest focus:outline-none focus:border-primary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSetPin(t.team_name, pinDrafts[t.team_name] || undefined)}
+                      disabled={pinBusy === t.team_name}
+                      className="px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/40 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
+                    >
+                      {pinBusy === t.team_name
+                        ? "Saving..."
+                        : pinDrafts[t.team_name]
+                          ? "Set"
+                          : "Generate"}
+                    </button>
+                    {t.has_pin && (
+                      <button
+                        type="button"
+                        onClick={() => handleClearPin(t.team_name)}
+                        disabled={pinBusy === t.team_name}
+                        className="px-3 py-1.5 rounded-lg bg-danger/10 border border-danger/40 text-danger text-xs font-medium hover:bg-danger/20 transition-colors disabled:opacity-50"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+      )}
+
       {/* Logged-In Users — super-commish (whitelisted IP) only */}
       {isWhitelisted && (
       <section className="space-y-3">
@@ -748,7 +951,7 @@ export default function CommissionerPage() {
             // suggest account sharing / impersonation.
             const teamCountries = new Map<string, Set<string>>();
             for (const row of loginHistory) {
-              if (!row.country) continue;
+              if (!row.country || row.success === false) continue;
               if (!teamCountries.has(row.team_name)) teamCountries.set(row.team_name, new Set());
               teamCountries.get(row.team_name)!.add(row.country);
             }
@@ -785,6 +988,11 @@ export default function CommissionerPage() {
                           {isSuspicious && (
                             <span className="text-[10px] text-cap-over font-semibold uppercase tracking-wider">
                               {countryCount} countries
+                            </span>
+                          )}
+                          {row.success === false && (
+                            <span className="text-[10px] text-cap-over font-semibold uppercase tracking-wider">
+                              Failed PIN
                             </span>
                           )}
                           {isBanned && (
