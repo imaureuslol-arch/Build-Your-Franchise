@@ -39,7 +39,7 @@ export default function SyncIssues() {
     const data = await res.json().catch(() => ({}));
     setMsg(
       res.ok
-        ? `Synced: ${data.teamsUpdated} team changes, ${data.playersAdded} new players, ${data.issues} issues.`
+        ? `Synced: ${data.teamsUpdated} team changes, ${data.playersAdded} new players, ${data.issues} issues, stats for ${data.statsUpdated} players (${data.statsSeason}).`
         : data.error ?? "Sync failed."
     );
     await load();

@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { audit, forbidden, getViewer, isAnyCommish } from "@/lib/auth";
 import { syncFromSleeper } from "@/lib/sleeper-sync";
+import { syncStats } from "@/lib/stats-sync";
 
 /** GET — open roster issues from the last sync. Either commish tier. */
 export async function GET() {
@@ -22,7 +23,9 @@ export async function POST() {
   const leagueId = process.env.SLEEPER_LEAGUE_ID;
   if (!leagueId) return Response.json({ error: "SLEEPER_LEAGUE_ID is not set" }, { status: 500 });
 
-  const result = await syncFromSleeper(leagueId);
+  const rosters = await syncFromSleeper(leagueId);
+  const stats = await syncStats(leagueId);
+  const result = { ...rosters, statsUpdated: stats.updated, statsSeason: stats.season };
   await audit(viewer, "sleeper_sync", result);
   return Response.json(result);
 }

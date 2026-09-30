@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { audit } from "@/lib/auth";
 import { syncFromSleeper } from "@/lib/sleeper-sync";
+import { syncStats } from "@/lib/stats-sync";
 
 /**
  * Daily Sleeper sync, called by Vercel Cron (see vercel.json). Vercel sends
@@ -14,7 +15,9 @@ export async function GET(request: NextRequest) {
   const leagueId = process.env.SLEEPER_LEAGUE_ID;
   if (!leagueId) return Response.json({ error: "SLEEPER_LEAGUE_ID is not set" }, { status: 500 });
 
-  const result = await syncFromSleeper(leagueId);
+  const rosters = await syncFromSleeper(leagueId);
+  const stats = await syncStats(leagueId);
+  const result = { ...rosters, statsUpdated: stats.updated, statsSeason: stats.season };
   await audit(null, "sleeper_sync", { ...result, fromCron: true });
   return Response.json(result);
 }
