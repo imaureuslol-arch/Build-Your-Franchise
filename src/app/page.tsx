@@ -53,7 +53,7 @@ export default function HomePage() {
   }, [players, owners]);
 
   if (loading) {
-    return <div className="max-w-7xl mx-auto px-4 py-10 text-text-muted">Loading…</div>;
+    return <div className="max-w-7xl mx-auto px-4 py-10 byf-loading">Loading…</div>;
   }
 
   const over = teams.filter((t) => t.status === "over").length;

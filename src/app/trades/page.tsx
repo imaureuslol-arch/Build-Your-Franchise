@@ -19,7 +19,7 @@ interface TradeSlot {
 
 export default function TradesPageWrapper() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-96"><div className="text-text-muted text-lg">Loading...</div></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center h-96"><div className="byf-loading">Loading...</div></div>}>
       <TradesPage />
     </Suspense>
   );
@@ -324,7 +324,7 @@ function TradesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-text-muted text-lg">Loading players...</div>
+        <div className="byf-loading">Loading players...</div>
       </div>
     );
   }
@@ -336,7 +336,7 @@ function TradesPage() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="px-4 py-2 bg-surface text-text-muted border border-border rounded-sm text-sm hover:text-text transition-colors relative"
+            className="byf-btn byf-btn--secondary byf-btn--sm relative"
           >
             History
 
@@ -344,7 +344,7 @@ function TradesPage() {
           {slots.length < 4 && (
             <button
               onClick={addTeam}
-              className="px-4 py-2 bg-surface-light text-text border border-border rounded-sm text-sm hover:bg-primary hover:text-white transition-colors"
+              className="byf-btn byf-btn--secondary byf-btn--sm"
             >
               + Add Team
             </button>
@@ -409,15 +409,15 @@ function TradesPage() {
         // the half-bar; stretches if anyone actually exceeds that.
         const scale = Math.max(150_000_000, maxAbsValue);
         return (
-          <div className="mt-6 w-full max-w-2xl mx-auto bg-surface border border-border rounded-sm overflow-hidden">
+          <div className="mt-6 w-full max-w-2xl mx-auto card-frame overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-              <h3 className="text-xl text-text">
+              <h3 className="text-xl">
                 Trade Fairness
               </h3>
               <span className={`text-sm font-bold ${fairnessLabel.color}`}>
                 {fairnessLabel.text}
                 {showWinner && (
-                  <span className="text-text-dim font-normal ml-2">
+                  <span className="ml-2">
                     ({winner.team} wins)
                   </span>
                 )}
@@ -429,7 +429,7 @@ function TradesPage() {
                 const positive = tv.value >= 0;
                 return (
                   <div key={tv.team} className="px-4 py-2.5">
-                    <div className="text-sm font-medium truncate mb-1">{tv.team}</div>
+                    <div className="text-sm truncate mb-1">{tv.team}</div>
                     <div className="relative h-2 bg-surface-light overflow-hidden">
                       <div className="absolute top-0 bottom-0 left-1/2 w-px bg-border/80" />
                       <div
@@ -442,7 +442,7 @@ function TradesPage() {
                       />
                     </div>
                     {tv.missingFV.length > 0 && (
-                      <p className="text-[10px] text-text-dim mt-1">
+                      <p className="byf-note mt-1">
                         No fair value for: {tv.missingFV.join(", ")}
                       </p>
                     )}
@@ -456,7 +456,7 @@ function TradesPage() {
 
       <div className="mt-6 flex flex-col items-center gap-4">
         <div className="flex flex-wrap justify-center gap-2 sm:gap-3 w-full">
-          <button onClick={handleValidate} className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-primary text-white rounded-sm font-medium hover:bg-primary-hover transition-colors">
+          <button onClick={handleValidate} className="byf-btn byf-btn--primary byf-btn--sm flex-1 sm:flex-none min-w-[140px]">
             Validate Trade
           </button>
           {myTeam && (
@@ -464,7 +464,7 @@ function TradesPage() {
               onClick={() => submit(false)}
               disabled={!inTrade || submitting}
               title={inTrade ? undefined : "Your team has to be in the trade"}
-              className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-cap-under text-white rounded-sm font-medium hover:opacity-90 transition-colors disabled:opacity-40"
+              className="byf-btn byf-btn--primary byf-btn--sm flex-1 sm:flex-none min-w-[140px]"
             >
               Propose Trade
             </button>
@@ -473,28 +473,28 @@ function TradesPage() {
             <button
               onClick={() => confirm("Record this trade now? Rosters and cap change immediately.") && submit(true)}
               disabled={submitting}
-              className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-surface-light text-text border border-border rounded-sm font-medium hover:text-text transition-colors disabled:opacity-40"
+              className="byf-btn byf-btn--secondary byf-btn--sm flex-1 sm:flex-none min-w-[140px]"
             >
               Record Trade
             </button>
           )}
-          <button onClick={handleReset} className="flex-1 sm:flex-none min-w-[100px] px-4 sm:px-6 py-2.5 bg-surface-light text-text-muted border border-border rounded-sm font-medium hover:text-text transition-colors">
+          <button onClick={handleReset} className="byf-btn byf-btn--secondary byf-btn--sm flex-1 sm:flex-none min-w-[100px]">
             Reset
           </button>
         </div>
 
-        {notice && <p className="text-sm text-cap-under text-center">{notice}</p>}
+        {notice && <p className="byf-alert byf-alert--ok text-center">{notice}</p>}
 
         {validationResult && (
-          <div className={`w-full max-w-2xl rounded-sm border p-4 ${validationResult.valid ? "bg-cap-under/10 border-cap-under/30" : "bg-cap-over/10 border-cap-over/30"}`}>
+          <div className={`w-full max-w-2xl ${validationResult.valid ? "byf-alert byf-alert--ok" : "byf-alert byf-alert--danger"}`}>
             {validationResult.valid ? (
-              <p className="text-cap-under font-medium text-center">Trade works under the cap rules.</p>
+              <p className="font-medium text-center">Trade works under the cap rules.</p>
             ) : (
               <div>
-                <p className="text-cap-over font-medium mb-2">Trade is invalid:</p>
+                <p className="font-medium mb-2">Trade is invalid:</p>
                 <ul className="list-disc list-inside space-y-1">
                   {validationResult.errors.map((err, i) => (
-                    <li key={i} className="text-sm text-cap-over/80">{err}</li>
+                    <li key={i} className="text-sm">{err}</li>
                   ))}
                 </ul>
               </div>

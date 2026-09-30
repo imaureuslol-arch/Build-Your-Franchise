@@ -8,8 +8,9 @@ interface Team { id: number; name: string }
 interface ContractPlayer { id: number; name: string; teamId: number | null; contracts: Record<string, number> }
 interface DeadCap { id: number; team_id: number; label: string; season: number; amount: number }
 interface Book { players: ContractPlayer[]; teams: Team[]; deadCap: DeadCap[] }
-const field = "w-full bg-background border border-border rounded-sm px-3 py-2 text-sm";
-const button = "px-4 py-2 rounded-sm bg-primary text-white text-sm disabled:opacity-40";
+const field = "byf-input";
+const select = "byf-select";
+const button = "byf-btn byf-btn--primary";
 const seasonLabel = (year: number) => `${year - 1}–${String(year).slice(2)}`;
 const money = (amount: number) => amount.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
@@ -44,11 +45,11 @@ export default function ContractManager() {
   return (
     <section className="space-y-4">
       <h2 className="text-2xl">Contracts &amp; Dead Cap</h2>
-      {error && <p role="alert" className="text-sm text-cap-over">{error} <button className="underline" onClick={() => load().then(() => setError("")).catch(e => setError(e.message))}>Reload</button></p>}
-      {notice && <p role="status" className="text-sm text-cap-under">{notice}</p>}
-      {!book ? <p className="text-sm text-text-muted">Loading contracts…</p> : <>
-        <details open className="border border-border bg-surface rounded-sm p-4 space-y-4">
-          <summary className="cursor-pointer font-semibold">Correct a contract</summary>
+      {error && <p role="alert" className="byf-alert byf-alert--danger">{error} <button className="byf-btn byf-btn--ghost byf-btn--sm" onClick={() => load().then(() => setError("")).catch(e => setError(e.message))}>Reload</button></p>}
+      {notice && <p role="status" className="byf-alert byf-alert--ok">{notice}</p>}
+      {!book ? <p className="byf-loading">Loading contracts…</p> : <>
+        <details open className="card-frame p-4 space-y-4">
+          <summary className="cursor-pointer byf-label">Correct a contract</summary>
           <label className="block text-sm">Find player
             <input className={field + " mt-1"} value={query} placeholder="Player name"
               onChange={e => { setQuery(e.target.value); setSelectedId(null); }} />
@@ -89,7 +90,7 @@ function ContractForm({ player, teams, save }: { player: ContractPlayer; teams: 
   return <form onSubmit={submit} className="space-y-4 border-t border-border pt-4">
     <h3 className="text-lg">{player.name}</h3>
     <label className="block text-sm">Team
-      <select className={field + " mt-1"} value={teamId} onChange={e => setTeamId(e.target.value)}>
+      <select className={select + " mt-1"} value={teamId} onChange={e => setTeamId(e.target.value)}>
         <option value="">Free Agency</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
       </select>
     </label>
@@ -99,8 +100,8 @@ function ContractForm({ player, teams, save }: { player: ContractPlayer; teams: 
           value={amounts[y]} onChange={e => setAmounts(prev => ({ ...prev, [y]: e.target.value }))} placeholder="No contract" />
       </label>)}
     </div>
-    <p className="text-xs text-text-dim">Blank removes that season’s salary. Moving a player to free agency requires clearing these salaries. Add any release penalty separately under Dead Cap. These changes only affect this site.</p>
-    {error && <p role="alert" className="text-sm text-cap-over">{error}</p>}
+    <p className="byf-note">Blank removes that season’s salary. Moving a player to free agency requires clearing these salaries. Add any release penalty separately under Dead Cap. These changes only affect this site.</p>
+    {error && <p role="alert" className="byf-alert byf-alert--danger">{error}</p>}
     <button className={button} disabled={busy}>{busy ? "Saving…" : "Save contract"}</button>
   </form>;
 }
@@ -135,18 +136,18 @@ function DeadCapForm({ entries, teams, save }: { entries: DeadCap[]; teams: Team
     catch (e) { setError(e instanceof Error ? e.message : "Could not remove entry."); }
     finally { setBusy(false); }
   }
-  return <details className="border border-border bg-surface rounded-sm p-4 space-y-4">
-    <summary className="cursor-pointer font-semibold">Dead Cap</summary>
+  return <details className="card-frame p-4 space-y-4">
+    <summary className="cursor-pointer byf-label">Dead Cap</summary>
     <label className="block text-sm">Team
-      <select className={field + " mt-1"} value={teamId} onChange={e => { setTeamId(e.target.value); reset(); }}>
+      <select className={select + " mt-1"} value={teamId} onChange={e => { setTeamId(e.target.value); reset(); }}>
         {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
       </select>
     </label>
     <ul className="divide-y divide-border max-h-64 overflow-y-auto">
       {entries.filter(e => e.team_id === Number(teamId)).map(entry => <li key={entry.id} className="py-3 flex items-center justify-between gap-3 text-sm">
         <div className="min-w-0"><p className="break-words">{entry.label}</p><p className="text-xs text-text-muted">{seasonLabel(entry.season)} · {money(entry.amount)}</p></div>
-        <div className="flex gap-3 shrink-0"><button disabled={busy} className="underline" onClick={() => edit(entry)}>Edit</button>
-          <button disabled={busy} className="text-cap-over underline" onClick={() => remove(entry)}>Remove</button></div>
+        <div className="flex gap-3 shrink-0"><button disabled={busy} className="byf-btn byf-btn--ghost byf-btn--sm" onClick={() => edit(entry)}>Edit</button>
+          <button disabled={busy} className="byf-btn byf-btn--ghost byf-btn--sm text-danger" onClick={() => remove(entry)}>Remove</button></div>
       </li>)}
       {!entries.some(e => e.team_id === Number(teamId)) && <li className="text-sm text-text-dim py-2">No dead cap for this team.</li>}
     </ul>
@@ -156,16 +157,16 @@ function DeadCapForm({ entries, teams, save }: { entries: DeadCap[]; teams: Team
         <input required maxLength={160} className={field + " mt-1"} value={label} onChange={e => setLabel(e.target.value)} placeholder="Player name / reason" />
       </label>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <label className="text-sm">Season<select className={field + " mt-1"} value={season} onChange={e => setSeason(Number(e.target.value))}>
+        <label className="text-sm">Season<select className={select + " mt-1"} value={season} onChange={e => setSeason(Number(e.target.value))}>
           {SALARY_YEARS.map(y => <option key={y} value={y}>{seasonLabel(y)}</option>)}</select></label>
-        <label className="text-sm">Type<select className={field + " mt-1"} value={kind} onChange={e => setKind(e.target.value)}>
+        <label className="text-sm">Type<select className={select + " mt-1"} value={kind} onChange={e => setKind(e.target.value)}>
           <option value="charge">Charge</option><option value="credit">Retention credit</option></select></label>
         <label className="text-sm">Amount · $M<input required type="number" min="0.000001" max="1000000" step="0.000001" className={field + " mt-1"} value={amount} onChange={e => setAmount(e.target.value)} /></label>
       </div>
-      <p className="text-xs text-text-dim">Charges increase the team’s cap total. Retention credits reduce it.</p>
-      {error && <p role="alert" className="text-sm text-cap-over">{error}</p>}
+      <p className="byf-note">Charges increase the team’s cap total. Retention credits reduce it.</p>
+      {error && <p role="alert" className="byf-alert byf-alert--danger">{error}</p>}
       <div className="flex gap-3"><button className={button} disabled={busy}>{busy ? "Saving…" : editing ? "Save dead cap" : "Add dead cap"}</button>
-        {editing && <button type="button" onClick={reset} className="text-sm underline">Cancel edit</button>}</div>
+        {editing && <button type="button" onClick={reset} className="byf-btn byf-btn--ghost byf-btn--sm">Cancel edit</button>}</div>
     </form>
   </details>;
 }

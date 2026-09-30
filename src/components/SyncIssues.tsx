@@ -68,19 +68,19 @@ export default function SyncIssues() {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xl text-text">Sleeper Sync</h3>
+        <h3 className="text-xl">Sleeper Sync</h3>
         <button
           onClick={run}
           disabled={running}
-          className="text-xs px-2.5 py-1 rounded-sm border border-border hover:bg-surface-light disabled:opacity-40"
+          className="byf-btn byf-btn--primary"
         >
           {running ? "Syncing…" : "Sync to Sleeper"}
         </button>
       </div>
-      {msg && <p className="text-xs text-text-muted">{msg}</p>}
-      <div className="bg-surface border border-border rounded-sm overflow-hidden">
+      {msg && <p className="byf-alert byf-alert--info">{msg}</p>}
+      <div className="card-frame overflow-hidden">
         {issues.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-text-dim text-center">Rosters match Sleeper.</p>
+          <p className="byf-empty px-4 py-6">Rosters match Sleeper.</p>
         ) : (
           kinds.map((k) => (
             <div key={k} className="border-b border-border last:border-0">

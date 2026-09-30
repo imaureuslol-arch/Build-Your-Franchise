@@ -61,8 +61,8 @@ export default function CommissionerPage() {
   if (!isWhitelisted && !isSubCommish) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="bg-surface border border-border rounded-sm p-6 w-full max-w-sm space-y-2 text-center">
-          <h1 className="text-xl font-bold text-text">Commissioner Tools</h1>
+        <div className="card-frame p-6 w-full max-w-sm space-y-2 text-center">
+          <h1 className="text-xl">Commissioner Tools</h1>
           <p className="text-sm text-text-muted">
             Open your commissioner login link on this device to get in.
           </p>
@@ -200,7 +200,7 @@ export default function CommissionerPage() {
 
       {/* Search */}
       <section className="space-y-3">
-        <label className="block text-sm text-text-muted">Search Player</label>
+        <label className="byf-label">Search Player</label>
         <div className="relative">
           <input
             type="text"
@@ -213,10 +213,10 @@ export default function CommissionerPage() {
               }
             }}
             placeholder="Type a player name..."
-            className="w-full px-4 py-3 rounded-sm bg-surface border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+            className="byf-input"
           />
           {filtered.length > 0 && !selectedPlayer && (
-            <ul className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-sm max-h-60 overflow-y-auto">
+            <ul className="absolute z-20 top-full left-0 right-0 mt-1 card-frame max-h-60 overflow-y-auto">
               {filtered.map((p) => {
                 const pv = values[p.id];
                 const missingStats = !pv;
@@ -245,10 +245,10 @@ export default function CommissionerPage() {
 
       {/* Selected Player Card */}
       {selectedPlayer && (
-        <section className="bg-surface border border-border rounded-sm p-6 space-y-6">
+        <section className="card-frame p-6 space-y-6">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <h2 className="text-xl font-bold text-text">{selectedPlayer.name}</h2>
+              <h2 className="text-xl">{selectedPlayer.name}</h2>
               <p className="text-sm text-text-muted mt-1">
                 {selectedPlayer.team} &middot; Salary: {formatSalary(getCurrentSalary(selectedPlayer))}
               </p>
@@ -257,23 +257,23 @@ export default function CommissionerPage() {
               <div className="text-right">
                 <p className="text-sm text-text-muted">Fair Value</p>
                 <p className="text-2xl font-bold text-accent">${sv.fairValue}M</p>
-                <p className="text-xs text-text-dim mt-0.5">Age {sv.age}</p>
+                <p className="byf-note mt-0.5">Age {sv.age}</p>
               </div>
             )}
             {!sv && (
               <div className="text-right">
                 <p className="text-sm text-warning font-semibold">No fair value</p>
-                <p className="text-xs text-text-dim">Fill in stats below to generate</p>
+                <p className="byf-note">Fill in stats below to generate</p>
               </div>
             )}
           </div>
 
           {/* Edit Form */}
           <div className="space-y-4">
-            <h3 className="text-xl text-text">
+            <h3 className="text-xl">
               Edit Player Stats
             </h3>
-            <p className="text-xs text-text-dim">
+            <p className="byf-note">
               Enter per-game stats — FPPG auto-calcs. Or type FPPG directly (or
               total fantasy points ÷ GP) to skip the breakdown.
             </p>
@@ -288,54 +288,54 @@ export default function CommissionerPage() {
                 ["3PM", editFg3m, setEditFg3m, "1.5"],
               ] as [string, string, (v: string) => void, string][]).map(([label, val, setter, ph]) => (
                 <div key={label}>
-                  <label className="block text-xs text-text-dim mb-1">{label}</label>
+                  <label className="byf-label mb-1">{label}</label>
                   <input
                     type="number"
                     step="0.1"
                     value={val}
                     onChange={(e) => setter(e.target.value)}
                     placeholder={ph}
-                    className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+                    className="byf-input"
                   />
                 </div>
               ))}
               <div>
-                <label className="block text-xs text-text-dim mb-1">FPPG</label>
+                <label className="byf-label mb-1">FPPG</label>
                 <input
                   type="number"
                   step="0.1"
                   value={editFppg}
                   onChange={(e) => setEditFppg(e.target.value)}
                   placeholder={computedFppg != null ? String(computedFppg) : "—"}
-                  className="w-full px-3 py-2 rounded-sm bg-background border border-border text-accent font-semibold placeholder:text-accent/40 placeholder:font-normal focus:outline-none focus:border-primary"
+                  className="byf-input text-accent placeholder:text-accent/40 placeholder:font-normal"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
               <div>
-                <label className="block text-xs text-text-dim mb-1">Age</label>
+                <label className="byf-label mb-1">Age</label>
                 <input
                   type="number"
                   value={editAge}
                   onChange={(e) => setEditAge(e.target.value)}
                   placeholder="e.g. 25"
-                  className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+                  className="byf-input"
                 />
               </div>
               <div>
-                <label className="block text-xs text-text-dim mb-1">Avg GP</label>
+                <label className="byf-label mb-1">Avg GP</label>
                 <input
                   type="number"
                   step="1"
                   value={editGp}
                   onChange={(e) => setEditGp(e.target.value)}
                   placeholder="e.g. 72"
-                  className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+                  className="byf-input"
                 />
               </div>
               <div>
-                <label className="block text-xs text-text-dim mb-1" title="Games per season you expect from now on. Replaces his games-played history in fair value; leave empty to use the history.">
+                <label className="byf-label mb-1" title="Games per season you expect from now on. Replaces his games-played history in fair value; leave empty to use the history.">
                   Health override (GP/season)
                 </label>
                 <input
@@ -344,7 +344,7 @@ export default function CommissionerPage() {
                   value={editHealth}
                   onChange={(e) => setEditHealth(e.target.value)}
                   placeholder="empty = use history"
-                  className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+                  className="byf-input"
                 />
               </div>
             </div>
@@ -354,13 +354,13 @@ export default function CommissionerPage() {
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="px-5 py-2.5 rounded-sm bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors disabled:opacity-50"
+                className="byf-btn byf-btn--primary"
               >
                 {saving ? "Saving..." : "Save Stats"}
               </button>
               {saveMsg && (
                 <span
-                  className={`text-sm ${saveMsg.type === "ok" ? "text-cap-under" : "text-danger"}`}
+                  className={`byf-alert ${saveMsg.type === "ok" ? "byf-alert--ok" : "byf-alert--danger"}`}
                 >
                   {saveMsg.text}
                 </span>
@@ -372,15 +372,15 @@ export default function CommissionerPage() {
 
       {/* Players Missing Stats */}
       <section className="space-y-3">
-        <h3 className="text-xl text-text">
+        <h3 className="text-xl">
           Players Missing Stats
         </h3>
-        <div className="bg-surface border border-border rounded-sm overflow-hidden">
+        <div className="card-frame overflow-hidden">
           {(() => {
             const missing = players.filter((p) => p.name !== "Dead Cap" && p.team !== FREE_AGENCY_TEAM && !values[p.id]);
             if (missing.length === 0) {
               return (
-                <p className="px-4 py-6 text-sm text-text-dim text-center">
+                <p className="px-4 py-6 byf-empty">
                   All players have stats populated.
                 </p>
               );
@@ -415,12 +415,12 @@ export default function CommissionerPage() {
 
       {/* Fair Value sidebar */}
       <aside className="lg:w-72 lg:shrink-0 space-y-4 lg:sticky lg:top-4 self-start">
-        <div className="bg-surface border border-border rounded-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <h3 className="text-xl text-text">
+        <div className="card-frame overflow-hidden">
+          <div className="card-head px-4 py-3 flex items-center justify-between gap-3">
+            <h3 className="text-xl">
               Team Strength
             </h3>
-            <p className="text-xs text-text-dim mt-0.5">
+            <p className="text-white/60 mt-0.5">
               Sum of roster fair values
             </p>
           </div>
@@ -457,12 +457,12 @@ export default function CommissionerPage() {
           </ul>
         </div>
 
-        <div className="bg-surface border border-border rounded-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <h3 className="text-xl text-text">
+        <div className="card-frame overflow-hidden">
+          <div className="card-head px-4 py-3 flex items-center justify-between gap-3">
+            <h3 className="text-xl">
               Fair Value Rankings
             </h3>
-            <p className="text-xs text-text-dim mt-0.5">
+            <p className="text-white/60 mt-0.5">
               {rankedByFairValue.length} players
             </p>
           </div>

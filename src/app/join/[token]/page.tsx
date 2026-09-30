@@ -25,17 +25,17 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6">
-      <div className="bg-surface border border-border rounded-sm p-8 max-w-sm w-full text-center space-y-4">
+      <div className="card-frame p-8 max-w-sm w-full text-center space-y-4">
         <h1 className="text-xl font-bold">Log in to Build Your Franchise</h1>
         <p className="text-sm text-text-muted">This device will stay logged in for a year.</p>
         <button
           onClick={logIn}
           disabled={busy}
-          className="w-full py-3 bg-primary text-white rounded-sm font-bold hover:bg-primary-hover disabled:opacity-40"
+          className="byf-btn byf-btn--primary byf-btn--block"
         >
           {busy ? "Logging in…" : "Log in"}
         </button>
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <p className="byf-alert byf-alert--danger">{error}</p>}
       </div>
     </div>
   );

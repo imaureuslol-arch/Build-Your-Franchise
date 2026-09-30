@@ -96,31 +96,31 @@ export default function LoginLinks() {
     setMsg("Copied.");
   }
 
-  const btn = "text-xs px-2.5 py-1 rounded-sm border border-border hover:bg-surface-light disabled:opacity-40";
+  const btn = "byf-btn byf-btn--secondary byf-btn--sm";
 
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h3 className="text-xl text-text">Login Links</h3>
+        <h3 className="text-xl">Login Links</h3>
         <button className={btn} disabled={busy === "sub"} onClick={newSubcommishLink}>
           New sub-commissioner link
         </button>
       </div>
-      <p className="text-xs text-text-dim">
+      <p className="byf-note">
         Make a link, copy it, and DM it to the owner on Sleeper. A link is only shown once; making a new one
         replaces the old one.
       </p>
-      {msg && <p className="text-xs text-text-muted">{msg}</p>}
+      {msg && <p className="byf-alert byf-alert--info">{msg}</p>}
 
       {links["Sub-commissioner"] && (
-        <div className="bg-primary/10 border border-primary/30 rounded-sm p-3 text-xs flex items-center gap-2">
+        <div className="byf-alert byf-alert--info flex items-center gap-2">
           <span className="font-semibold shrink-0">Sub-commissioner:</span>
-          <code className="truncate flex-1">{links["Sub-commissioner"]}</code>
+          <code className="byf-code truncate flex-1">{links["Sub-commissioner"]}</code>
           <button className={btn} onClick={() => copy(links["Sub-commissioner"])}>Copy</button>
         </div>
       )}
 
-      <div className="bg-surface border border-border rounded-sm divide-y divide-border">
+      <div className="card-frame divide-y divide-border">
         {teams.map((t) => {
           const devices = sessions.filter((s) => s.team_id === t.id);
           const link = links[t.name];
@@ -140,15 +140,15 @@ export default function LoginLinks() {
                     {t.link_created ? "New link" : "Make link"}
                   </button>
                   {(t.link_created || devices.length > 0) && (
-                    <button className={`${btn} text-danger`} disabled={busy === `revoke-${t.id}`} onClick={() => revoke(t)}>
+                    <button className="byf-btn byf-btn--danger byf-btn--sm" disabled={busy === `revoke-${t.id}`} onClick={() => revoke(t)}>
                       Log out all
                     </button>
                   )}
                 </div>
               </div>
               {link && (
-                <div className="bg-primary/10 border border-primary/30 rounded-sm p-2 text-xs flex items-center gap-2">
-                  <code className="truncate flex-1">{link}</code>
+                <div className="byf-alert byf-alert--info flex items-center gap-2">
+                  <code className="byf-code truncate flex-1">{link}</code>
                   <button className={btn} onClick={() => copy(link)}>Copy</button>
                 </div>
               )}
@@ -161,7 +161,7 @@ export default function LoginLinks() {
                         {d.country ? ` · ${d.country}` : ""} · last seen {ago(d.last_seen)}
                       </span>
                       <button
-                        className="hover:text-danger"
+                        className="byf-btn byf-btn--ghost byf-btn--sm text-danger"
                         onClick={() => act(`s-${d.id}`, { action: "end_session", sessionId: d.id })}
                       >
                         Log out

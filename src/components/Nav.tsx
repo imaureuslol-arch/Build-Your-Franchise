@@ -43,7 +43,7 @@ export default function Nav() {
   const badge = (href: string) =>
     href === "/trades" && tradesWaiting > 0 ? (
       <span
-        className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-teal text-purple-deep text-xs font-bold not-italic align-middle font-sans"
+        className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-sm bg-teal text-purple-deep text-xs font-bold not-italic align-middle font-sans"
         aria-label={`${tradesWaiting} trade${tradesWaiting === 1 ? "" : "s"} waiting for you`}
       >
         {tradesWaiting}
@@ -68,7 +68,7 @@ export default function Nav() {
     <select
       value={teamName ?? ""}
       onChange={(e) => impersonate(e.target.value)}
-      className="bg-purple-deep border border-white/20 px-1.5 py-0.5 text-xs text-white/70 focus:outline-none focus:border-white"
+      className="byf-select--on-dark px-1.5 py-0.5 text-xs"
       title="View the site as another team"
     >
       <option value="" disabled>View as…</option>

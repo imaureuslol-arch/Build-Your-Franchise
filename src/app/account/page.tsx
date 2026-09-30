@@ -43,32 +43,32 @@ export default function AccountPage() {
             {isWhitelisted ? " · commissioner" : isSubCommish ? " · sub-commissioner" : ""}.
           </p>
 
-          <section className="bg-surface border border-border rounded-sm p-5 space-y-3">
+          <section className="card-frame p-5 space-y-3">
             <h2 className="font-semibold">Add another device</h2>
             <p className="text-sm text-text-muted">
               Makes a link that works once, for 10 minutes. Open it on your phone or other computer.
             </p>
             {link ? (
               <div className="space-y-2">
-                <code className="block text-xs break-all bg-surface-light border border-border rounded-sm p-2">{link}</code>
+                <code className="byf-code block break-all">{link}</code>
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(link);
                     setCopied(true);
                   }}
-                  className="px-3 py-1.5 text-sm rounded-sm bg-primary text-white"
+                  className="byf-btn byf-btn--primary"
                 >
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
             ) : (
-              <button onClick={makeDeviceLink} className="px-3 py-1.5 text-sm rounded-sm bg-primary text-white">
+              <button onClick={makeDeviceLink} className="byf-btn byf-btn--primary">
                 Make device link
               </button>
             )}
           </section>
 
-          <button onClick={logOut} className="text-sm text-danger hover:underline">
+          <button onClick={logOut} className="byf-btn byf-btn--ghost byf-btn--sm text-danger">
             Log out on this device
           </button>
         </>

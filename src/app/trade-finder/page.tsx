@@ -195,7 +195,7 @@ export default function TradeFinderPage() {
 
   if (loading || valuesLoading) {
     return (
-      <div className="flex items-center justify-center h-96 text-text-muted">
+      <div className="flex items-center justify-center h-96 byf-loading">
         Loading...
       </div>
     );
@@ -213,9 +213,9 @@ export default function TradeFinderPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column: select your players */}
         <div className="lg:col-span-1">
-          <div className="bg-surface rounded-sm border border-border overflow-hidden">
+          <div className="card-frame overflow-hidden">
             <div className="p-4 border-b border-border">
-              <h2 className="text-xl text-text mb-2">
+              <h2 className="text-xl mb-2">
                 Your Players to Trade
               </h2>
               <input
@@ -223,21 +223,21 @@ export default function TradeFinderPage() {
                 placeholder="Search roster..."
                 value={rosterSearch}
                 onChange={(e) => setRosterSearch(e.target.value)}
-                className="w-full bg-surface-light border border-border rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="byf-input"
               />
             </div>
 
             {/* Selected players */}
             {selectedPlayers.length > 0 && (
               <div className="p-3 border-b border-border bg-primary/5">
-                <div className="text-xs text-text-dim mb-1.5">
+                <div className="byf-note mb-1.5">
                   Selected ({selectedPlayers.length}) &mdash; {formatSalary(userPackageSalary)}
                 </div>
                 <div className="space-y-1">
                   {selectedPlayers.map((p) => (
                     <div
                       key={p.id}
-                      className="flex items-center justify-between bg-primary/10 rounded px-2 py-1.5 text-sm gap-2"
+                      className="flex items-center justify-between byf-tile px-2 py-1.5 text-sm gap-2"
                     >
                       <span className="font-medium truncate min-w-0">{p.name}</span>
                       <div className="flex items-center gap-2 shrink-0">
@@ -246,7 +246,7 @@ export default function TradeFinderPage() {
                         </span>
                         <button
                           onClick={() => togglePlayer(p)}
-                          className="text-text-dim hover:text-cap-over text-xs"
+                          className="byf-btn byf-btn--ghost byf-btn--sm"
                         >
                           &times;
                         </button>
@@ -293,15 +293,15 @@ export default function TradeFinderPage() {
         {/* Right column: filters + results */}
         <div className="lg:col-span-2 space-y-6">
           {/* Filters */}
-          <div className="bg-surface rounded-sm border border-border p-4">
-            <h2 className="text-xl text-text mb-4">
+          <div className="card-frame p-4">
+            <h2 className="text-xl mb-4">
               Search Filters
             </h2>
 
             <div className="space-y-4">
               {/* Player count range */}
               <div>
-                <label className="text-xs text-text-dim block mb-1">
+                <label className="byf-label block mb-1">
                   Players in return package: {playerCountMin} &ndash; {playerCountMax}
                 </label>
                 <div className="space-y-1">
@@ -340,7 +340,7 @@ export default function TradeFinderPage() {
 
               {/* Age range */}
               <div>
-                <label className="text-xs text-text-dim block mb-1">
+                <label className="byf-label block mb-1">
                   Age range: {ageMin} &ndash; {ageMax}
                 </label>
                 <div className="space-y-1">
@@ -379,7 +379,7 @@ export default function TradeFinderPage() {
 
               {/* Salary range */}
               <div>
-                <label className="text-xs text-text-dim block mb-1">
+                <label className="byf-label block mb-1">
                   Total package salary: {formatSalary(salaryMin)} &ndash; {formatSalary(salaryMax)}
                 </label>
                 <div className="space-y-1">
@@ -422,7 +422,7 @@ export default function TradeFinderPage() {
             <button
               onClick={findPackages}
               disabled={selectedPlayers.length === 0}
-              className="w-full mt-4 py-2.5 bg-primary text-white rounded-sm font-medium disabled:opacity-40 hover:bg-primary-hover transition-colors"
+              className="byf-btn byf-btn--primary byf-btn--block mt-4"
             >
               Find Packages
             </button>
@@ -436,9 +436,9 @@ export default function TradeFinderPage() {
 
           {/* Results */}
           {searched && (
-            <div className="bg-surface rounded-sm border border-border overflow-hidden">
+            <div className="card-frame overflow-hidden">
               <div className="p-4 border-b border-border">
-                <h2 className="text-xl text-text">
+                <h2 className="text-xl">
                   Results ({results.length})
                 </h2>
               </div>
@@ -480,7 +480,7 @@ export default function TradeFinderPage() {
                       </div>
                       <button
                         onClick={() => sendToTradeMachine(pkg)}
-                        className="mt-2 w-full py-1.5 text-xs font-medium bg-primary/10 text-primary border border-primary/30 rounded-sm hover:bg-primary/15 transition-colors"
+                        className="byf-btn byf-btn--secondary byf-btn--sm byf-btn--block mt-2"
                       >
                         Send to Trade Machine
                       </button>

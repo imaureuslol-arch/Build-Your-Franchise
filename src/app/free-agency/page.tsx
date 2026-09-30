@@ -263,25 +263,25 @@ export default function FreeAgencyPage() {
 
   const errors = getOfferErrors();
 
-  if (loading || offersLoading) return <div className="flex items-center justify-center h-96 text-text-muted">Loading data...</div>;
+  if (loading || offersLoading) return <div className="flex items-center justify-center h-96 byf-loading">Loading data...</div>;
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <h1 className="text-4xl mb-6">Free Agency Tracker</h1>
-      {loadError && <p role="alert" className="mb-4 text-sm text-cap-over">{loadError} <button className="underline" onClick={refreshOffers}>Retry</button></p>}
+      {loadError && <p role="alert" className="mb-4 byf-alert byf-alert--danger">{loadError} <button className="byf-btn byf-btn--ghost byf-btn--sm" onClick={refreshOffers}>Retry</button></p>}
       {round && <FreeAgencySchedule round={round} now={now} canManage={canClear} bids={offerHistory} awards={awards} refresh={refreshOffers} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Player List */}
         <div className="lg:col-span-1">
-          <div className="bg-surface rounded-sm border border-border overflow-hidden">
+          <div className="card-frame overflow-hidden">
             <div className="p-4 border-b border-border">
               <input
                 type="text"
                 placeholder="Search players..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-surface-light border border-border rounded-sm px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none"
+                className="byf-input"
               />
             </div>
             <div className="max-h-[600px] overflow-y-auto">
@@ -303,7 +303,7 @@ export default function FreeAgencyPage() {
                         )}
                       </div>
                       {playerOffers && playerOffers[0] && (
-                        <span className="bg-primary/15 text-primary text-[11px] px-1 font-semibold shrink-0 ml-2 font-mono">
+                        <span className="byf-tile text-primary text-[11px] px-1 font-semibold shrink-0 ml-2 font-mono">
                           {formatSalary(getWeightedValue(playerOffers[0]))}
                         </span>
                       )}
@@ -318,22 +318,22 @@ export default function FreeAgencyPage() {
         {/* Bid Builder */}
         <div className="md:col-span-1 lg:col-span-2">
           {!selectedPlayer ? (
-            <div className="bg-surface rounded-sm border border-border flex items-center justify-center h-96 text-text-dim">
+            <div className="card-frame flex items-center justify-center h-96 text-text-dim">
               Select a player to build a bid
             </div>
           ) : (
-            <div className="bg-surface rounded-sm border border-border p-6">
+            <div className="card-frame p-6">
               <h2 className="font-bold text-xl mb-4">{selectedPlayer.name}</h2>
               
               <div className="mb-6">
-                <label className="text-xs font-bold text-text-muted uppercase mb-2 block">Your Identity</label>
-                <div className="bg-surface-light border border-border rounded-sm px-3 py-2 w-full text-sm text-text">
+                <label className="byf-label mb-2 block">Your Identity</label>
+                <div className="byf-tile px-3 py-2 w-full text-sm text-text">
                   {myOwner ? `${myOwner.user_name} (${myOwner.team_name})` : "Not identified"}
                 </div>
               </div>
 
               <div className="mb-6">
-                <label className="text-xs font-bold text-text-muted uppercase mb-2 block">Contract Duration</label>
+                <label className="byf-label mb-2 block">Contract Duration</label>
                 <div className="flex gap-2">
                   {availableYears.map((year, idx) => {
                     const isSelected = offerYears.includes(year);
@@ -343,9 +343,7 @@ export default function FreeAgencyPage() {
                         key={year}
                         disabled={isDisabled}
                         onClick={() => toggleYear(year)}
-                        className={`px-4 py-2 rounded-sm text-sm font-medium transition-colors ${
-                          isSelected ? "bg-primary text-white" : "bg-surface-light border border-border text-text-muted"
-                        } ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
+                        className={`byf-chip ${isSelected ? "byf-chip--on" : ""} ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
                       >
                         {year}
                       </button>
@@ -355,7 +353,7 @@ export default function FreeAgencyPage() {
               </div>
 
               {isOverHardCap && (
-                <div className="bg-cap-over/10 border border-cap-over/30 rounded-sm p-3 mb-4 text-xs text-cap-over">
+                <div className="byf-alert byf-alert--danger mb-4">
                   Your team is over the hard cap — offers are locked to the minimum (the veteran minimum each season).
                 </div>
               )}
@@ -383,7 +381,7 @@ export default function FreeAgencyPage() {
               )}
 
               {errors.length > 0 && offerYears.length > 0 && (
-                <div className="bg-cap-over/10 border border-cap-over/30 rounded-sm p-3 mb-4 text-xs text-cap-over space-y-1">
+                <div className="byf-alert byf-alert--danger mb-4 space-y-1">
                   {errors.map((err, i) => <div key={i}>• {err}</div>)}
                 </div>
               )}
@@ -400,10 +398,10 @@ export default function FreeAgencyPage() {
                 const rank = existing.filter((o) => getWeightedValue(o) >= myWeighted).length + 1;
                 return (
                   <div
-                    className={`rounded-sm p-3 mb-4 text-xs border ${
+                    className={`p-3 mb-4 ${
                       wouldWin
-                        ? "bg-cap-under/10 border-cap-under/40 text-cap-under"
-                        : "bg-surface-light border-border text-text-muted"
+                        ? "byf-alert byf-alert--ok"
+                        : "byf-tile"
                     }`}
                   >
                     <div className="flex justify-between font-bold">
@@ -424,7 +422,7 @@ export default function FreeAgencyPage() {
               <button
                 onClick={handleSubmit}
                 disabled={errors.length > 0 || submitting}
-                className="w-full py-3 bg-primary text-white rounded-sm font-bold hover:bg-primary-hover disabled:opacity-30"
+                className="byf-btn byf-btn--primary byf-btn--block"
               >
                 {submitting ? "Submitting…" : "Submit Official Bid"}
               </button>
@@ -434,8 +432,8 @@ export default function FreeAgencyPage() {
 
         {/* Offer Log */}
         <div className="lg:col-span-1">
-          <div className="bg-surface rounded-sm border border-border overflow-hidden">
-            <div className="p-4 border-b border-border font-bold text-sm">Offer Log</div>
+          <div className="card-frame overflow-hidden">
+            <div className="card-head px-4 py-3 flex items-center justify-between gap-3 font-bold text-sm">Offer Log</div>
             <div className="max-h-[600px] overflow-y-auto">
               {playerIdsWithOffers.map((pId) => {
                 const offers = offersByPlayer.get(pId)!;
@@ -457,7 +455,7 @@ export default function FreeAgencyPage() {
                       </div>
                     </button>
                     {isViewing && (
-                      <div className="p-4 bg-surface-light space-y-2 border-t border-border/30">
+                      <div className="byf-tile p-4 space-y-2 border-t border-border/30">
                         {offers.map((o) => (
                           <div key={o.id} className="text-[10px] border-b border-border/20 pb-1.5 last:border-0 space-y-0.5">
                             <div className="flex justify-between font-bold">
@@ -480,7 +478,7 @@ export default function FreeAgencyPage() {
                         ))}
                         {canClear && biddingOpen && <button
                           onClick={() => handleClear(pId)}
-                          className="w-full py-1 text-[10px] text-cap-over font-bold uppercase hover:underline"
+                          className="byf-btn byf-btn--danger byf-btn--sm byf-btn--block"
                         >
                           Clear Bids
                         </button>}
@@ -497,9 +495,9 @@ export default function FreeAgencyPage() {
       {/* Copy Popup */}
       {showCopyPopup && copiedOffer && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface rounded-sm p-6 max-w-sm w-full border border-border">
+          <div className="card-frame p-6 max-w-sm w-full">
             <h3 className="font-bold text-primary mb-4">Bid Formatted</h3>
-            <pre className="bg-surface-light p-4 rounded-sm text-[10px] font-mono whitespace-pre-wrap mb-4">
+            <pre className="byf-code whitespace-pre-wrap mb-4">
               {getOfferCopyText(copiedOffer)}
             </pre>
             <button
@@ -507,7 +505,7 @@ export default function FreeAgencyPage() {
                 navigator.clipboard.writeText(getOfferCopyText(copiedOffer));
                 setShowCopyPopup(false);
               }}
-              className="w-full py-2 bg-primary text-white rounded font-bold"
+              className="byf-btn byf-btn--primary byf-btn--block"
             >
               Copy & Close
             </button>

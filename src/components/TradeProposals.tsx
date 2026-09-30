@@ -76,7 +76,7 @@ export default function TradeProposals({ trades, myTeam, isCommish, onChange }: 
     }
   }
 
-  const btn = "px-3 py-1.5 text-sm rounded-sm border border-border hover:bg-surface-light disabled:opacity-40";
+  const btn = "byf-btn byf-btn--secondary byf-btn--sm";
 
   return (
     <section className="mb-6 space-y-3">
@@ -87,29 +87,29 @@ export default function TradeProposals({ trades, myTeam, isCommish, onChange }: 
         const canCancel = t.proposed_by === myTeam;
         const awaitingApproval = t.status === "accepted";
         return (
-          <div key={t.id} className="bg-surface border border-border rounded-sm p-4 space-y-3">
+          <div key={t.id} className="card-frame p-4 space-y-3">
             <div className="flex items-baseline justify-between gap-2 text-xs text-text-dim">
               <span>Proposed by {t.proposed_by ?? "the commissioner"}</span>
               <span>{awaitingApproval ? "All teams accepted — waiting for the commissioner" : "Waiting for teams"}</span>
             </div>
             <TradeSummary trade={t} />
             {errors[t.id]?.length ? (
-              <ul className="text-sm text-cap-over list-disc list-inside">
+              <ul className="byf-alert byf-alert--danger list-disc list-inside">
                 {errors[t.id].map((e) => <li key={e}>{e}</li>)}
               </ul>
             ) : null}
             <div className="flex flex-wrap gap-2">
               {canRespond && (
                 <>
-                  <button className={`${btn} bg-cap-under/15`} disabled={busy === t.id} onClick={() => act(t.id, "accept")}>Accept</button>
+                  <button className="byf-btn byf-btn--ok byf-btn--sm" disabled={busy === t.id} onClick={() => act(t.id, "accept")}>Accept</button>
                   <button className={btn} disabled={busy === t.id} onClick={() => act(t.id, "decline")}>Decline</button>
                 </>
               )}
               {isCommish && awaitingApproval && (
-                <button className={`${btn} bg-cap-under/15`} disabled={busy === t.id} onClick={() => act(t.id, "approve")}>Approve</button>
+                <button className="byf-btn byf-btn--ok byf-btn--sm" disabled={busy === t.id} onClick={() => act(t.id, "approve")}>Approve</button>
               )}
               {isCommish && (
-                <button className={btn} disabled={busy === t.id} onClick={() => confirm("Reject this trade?") && act(t.id, "reject")}>Reject</button>
+                <button className="byf-btn byf-btn--danger byf-btn--sm" disabled={busy === t.id} onClick={() => confirm("Reject this trade?") && act(t.id, "reject")}>Reject</button>
               )}
               {canCancel && (
                 <button className={btn} disabled={busy === t.id} onClick={() => act(t.id, "cancel")}>Withdraw</button>

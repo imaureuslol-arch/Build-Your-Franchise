@@ -1,10 +1,28 @@
 @import "tailwindcss";
 
 /*
+ * Build Your Franchise — one visual language.
+ *
  * 90s NBA / trading-card look: teal, purple and black (expansion-era
  * Hornets/Raptors), varsity lettering, heavy italic headings with a slanted
  * two-colour stripe, tables framed like the back of a card. All cool hues,
  * so it holds up under night-light / blue-light filters.
+ *
+ * Every surface and control comes from the kit below, so no page falls back
+ * to a stock browser widget:
+ *
+ *   .byf-input / .byf-select / .byf-textarea  fields: blocky, square, teal focus
+ *   .byf-label                                field caption
+ *   .byf-btn + --primary --ok --danger --ghost --sm --block
+ *   .byf-chip + --on                          filter and tab toggles
+ *   .card-frame / .card-head / .byf-panel     card, panel and dialog surfaces
+ *   .byf-tile                                 inset block inside a card
+ *   .byf-table                                stat table (the card back)
+ *   .byf-alert + --info --ok --warn --danger  inline messages
+ *   .byf-code / .byf-note / .byf-loading / .byf-empty
+ *
+ * The kit lives in the components layer, so a page can still nudge any single
+ * instance with a Tailwind utility (utilities beat components).
  */
 :root {
   --paper: #eeecf3;
@@ -22,6 +40,8 @@
   --good: #1d8248;
   --warn: #946500;
   --bad: #bf2f45;
+  --focus: #0a7169;
+  --shadow-hard: 3px 3px 0 0 var(--purple-deep);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,6 +61,8 @@
     --good: #5fd28e;
     --warn: #f0c04e;
     --bad: #ff6f86;
+    --focus: #38d0c3;
+    --shadow-hard: 3px 3px 0 0 #000000;
   }
 }
 
@@ -107,6 +129,435 @@ body {
     transform: skewX(-24deg);
     transform-origin: left;
   }
+
+  /*
+   * Fields are normalised once, here, so a stock control can never slip
+   * through: square corners, an ink edge, the blocky face and a teal focus
+   * ring. Anything a page adds on top is a deliberate variation.
+   */
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea {
+    font-family: var(--font-blocky), var(--font-sans);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+    background: var(--sheet);
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    padding: 0.45rem 0.6rem;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* Numbers belong to the mono face everywhere else, so they do here too. */
+  input[type="number"] {
+    font-family: var(--font-mono), monospace;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):focus,
+  select:focus,
+  textarea:focus {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  ::placeholder {
+    font-family: var(--font-blocky), var(--font-sans);
+    font-style: italic;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-3);
+    opacity: 1;
+  }
+
+  /* A stock <select> popup is the loudest leftover of an older build: make
+     the list itself a blocky, square card. */
+  select option,
+  select optgroup {
+    font-family: var(--font-blocky), var(--font-sans);
+    font-weight: 700;
+    font-style: italic;
+    letter-spacing: 0.03em;
+    color: var(--ink);
+    background-color: var(--sheet);
+  }
+
+  /* One keyboard focus ring for the whole site. */
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  summary {
+    cursor: pointer;
+  }
+  summary::marker {
+    color: var(--teal-hi);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * The kit
+ * ------------------------------------------------------------------------- */
+@layer components {
+  /* Fields ---------------------------------------------------------------- */
+  .byf-input,
+  .byf-textarea {
+    display: block;
+    width: 100%;
+  }
+  .byf-textarea {
+    resize: vertical;
+  }
+
+  .byf-select {
+    display: block;
+    width: 100%;
+    font-family: var(--font-blocky), var(--font-sans);
+    font-weight: 700;
+    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding-right: 2.1rem;
+    /* Square chevron, cut to match the lettering. */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5l5-5' fill='none' stroke='%2317111f' stroke-width='2'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.65rem center;
+    background-size: 11px 7px;
+  }
+  .byf-select:hover:not(:disabled) {
+    background-color: var(--sheet-2);
+  }
+
+  /* On the deep-purple masthead the same control reads white-on-purple. */
+  .byf-select--on-dark,
+  .masthead .byf-select {
+    color: #fff;
+    background-color: rgb(255 255 255 / 0.06);
+    border-color: rgb(255 255 255 / 0.45);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23ffffff' stroke-width='2'/></svg>");
+  }
+  .masthead .byf-select:hover:not(:disabled) {
+    background-color: rgb(255 255 255 / 0.14);
+  }
+
+  .byf-label {
+    display: block;
+    font-family: var(--font-blocky), var(--font-sans);
+    font-size: 0.75rem;
+    font-weight: 800;
+    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-2);
+  }
+
+  /* Buttons --------------------------------------------------------------- */
+  .byf-btn {
+    --byf-btn-bg: var(--sheet);
+    --byf-btn-fg: var(--ink);
+    --byf-btn-bd: var(--ink);
+    --byf-btn-bg-hover: var(--sheet-2);
+    --byf-btn-fg-hover: var(--ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.85rem;
+    font-family: var(--font-blocky), var(--font-sans);
+    font-size: 0.875rem;
+    font-weight: 800;
+    font-style: italic;
+    line-height: 1;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-align: center;
+    text-decoration: none;
+    color: var(--byf-btn-fg);
+    background: var(--byf-btn-bg);
+    border: 2px solid var(--byf-btn-bd);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.06s, box-shadow 0.15s;
+  }
+  .byf-btn:hover:not(:disabled) {
+    color: var(--byf-btn-fg-hover);
+    background: var(--byf-btn-bg-hover);
+  }
+  .byf-btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .byf-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* The loud one: a teal sticker with a hard purple offset. */
+  .byf-btn--primary {
+    --byf-btn-bg: var(--teal-2);
+    --byf-btn-fg: #fff;
+    --byf-btn-fg-hover: #fff;
+    --byf-btn-bg-hover: var(--purple-deep);
+  }
+  .byf-btn--primary:hover:not(:disabled) {
+    box-shadow: var(--shadow-hard);
+  }
+
+  /* Quiet default: paper with an ink edge. */
+  .byf-btn--secondary {
+    --byf-btn-bg: var(--sheet);
+    --byf-btn-fg: var(--ink);
+    --byf-btn-bd: var(--ink);
+  }
+
+  /* Text-only, for tertiary actions inside a row. */
+  .byf-btn--ghost {
+    --byf-btn-bg: transparent;
+    --byf-btn-fg: var(--ink-2);
+    --byf-btn-bd: transparent;
+    --byf-btn-bg-hover: var(--sheet-2);
+  }
+
+  /* Confirmation, e.g. accept a trade. */
+  .byf-btn--ok {
+    --byf-btn-bg: color-mix(in srgb, var(--good) 14%, var(--sheet));
+    --byf-btn-fg: var(--good);
+    --byf-btn-fg-hover: var(--sheet);
+    --byf-btn-bd: var(--good);
+    --byf-btn-bg-hover: var(--good);
+  }
+
+  /* The destructive one, kept as an outline so it never screams by accident. */
+  .byf-btn--danger {
+    --byf-btn-bg: transparent;
+    --byf-btn-fg: var(--bad);
+    --byf-btn-fg-hover: var(--sheet);
+    --byf-btn-bd: var(--bad);
+    --byf-btn-bg-hover: var(--bad);
+  }
+
+  .byf-btn--sm {
+    padding: 0.28rem 0.55rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+  }
+  .byf-btn--block {
+    width: 100%;
+  }
+
+  /* Toggles: conference filters, page tabs. --------------------------------- */
+  .byf-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    font-family: var(--font-blocky), var(--font-sans);
+    font-size: 0.8125rem;
+    font-weight: 800;
+    font-style: italic;
+    line-height: 1;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    background: var(--sheet);
+    border: 2px solid var(--rule);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .byf-chip:hover {
+    color: var(--ink);
+    border-color: var(--ink);
+  }
+  .byf-chip--on,
+  .byf-chip[aria-pressed="true"],
+  .byf-chip[aria-selected="true"] {
+    color: #fff;
+    background: var(--purple-deep);
+    border-color: var(--teal-hi);
+  }
+  @media (prefers-color-scheme: dark) {
+    .byf-chip--on,
+    .byf-chip[aria-pressed="true"],
+    .byf-chip[aria-selected="true"] {
+      background: var(--teal-hi);
+      color: var(--purple-deep);
+      border-color: var(--purple-deep);
+    }
+  }
+
+  /* Surfaces -------------------------------------------------------------- */
+  /* .card-frame and .card-head are defined below; these are the padded
+     variants used for panels, sidebars and dialogs. */
+  .byf-panel {
+    background: var(--sheet);
+    border: 2px solid var(--ink);
+  }
+  .byf-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.9rem;
+    background: var(--purple-deep);
+    color: #fff;
+    border-bottom: 3px solid var(--teal-hi);
+  }
+  @media (prefers-color-scheme: light) {
+    .byf-panel-head {
+      background: var(--purple);
+    }
+  }
+  .byf-panel-head :is(h1, h2, h3, h4) {
+    color: #fff;
+    font-size: 1.125rem;
+  }
+
+  /* An inset block inside a card: salary lines, cap tiles, code. */
+  .byf-tile {
+    background: var(--sheet-2);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--teal-hi);
+    border-radius: 2px;
+  }
+
+  /* Tables ---------------------------------------------------------------- */
+  .byf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  .byf-table thead th {
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-blocky), var(--font-sans);
+    font-size: 0.8125rem;
+    font-weight: 800;
+    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    text-align: left;
+    color: #fff;
+    background: var(--purple-deep);
+  }
+  @media (prefers-color-scheme: light) {
+    .byf-table thead th {
+      background: var(--purple);
+    }
+  }
+  .byf-table tbody tr {
+    border-top: 1px solid var(--rule);
+  }
+  .byf-table tbody tr:nth-child(even) {
+    background: var(--sheet-2);
+  }
+  .byf-table tbody tr:hover {
+    background: color-mix(in srgb, var(--teal) 12%, var(--sheet-2));
+  }
+  .byf-table td {
+    padding: 0.5rem 0.75rem;
+    vertical-align: top;
+  }
+
+  /* Messages and small print ------------------------------------------------ */
+  .byf-alert {
+    display: block;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--ink);
+    background: var(--sheet);
+    border: 2px solid var(--ink);
+    border-left-width: 6px;
+    border-radius: 2px;
+  }
+  .byf-alert--info {
+    background: color-mix(in srgb, var(--teal) 12%, var(--sheet));
+    border-left-color: var(--teal-hi);
+  }
+  .byf-alert--ok {
+    background: color-mix(in srgb, var(--good) 12%, var(--sheet));
+    border-left-color: var(--good);
+  }
+  .byf-alert--warn {
+    background: color-mix(in srgb, var(--warn) 14%, var(--sheet));
+    border-left-color: var(--warn);
+  }
+  .byf-alert--danger {
+    background: color-mix(in srgb, var(--bad) 12%, var(--sheet));
+    border-left-color: var(--bad);
+  }
+
+  .byf-code {
+    display: block;
+    padding: 0.5rem 0.6rem;
+    font-family: var(--font-mono), monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--ink);
+    background: var(--sheet-2);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--purple);
+    border-radius: 2px;
+    overflow-wrap: anywhere;
+  }
+
+  .byf-note {
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--ink-3);
+  }
+
+  .byf-loading,
+  .byf-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 2.25rem 1rem;
+    font-family: var(--font-blocky), var(--font-sans);
+    font-size: 1.125rem;
+    font-weight: 800;
+    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    text-align: center;
+    color: var(--ink-3);
+  }
+  .byf-empty {
+    font-size: 0.9375rem;
+    letter-spacing: 0.08em;
+  }
+  /* The bouncing bar from the scoreboard. */
+  .byf-loading::before {
+    content: "";
+    width: 0.5rem;
+    height: 1.2rem;
+    background: var(--teal-hi);
+    animation: byf-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes byf-pulse {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+      opacity: 0.4;
+    }
+    50% {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+  }
 }
 
 /* Masthead: deep purple with diagonal pinstripes, like a warm-up jacket. */
@@ -123,13 +574,20 @@ body {
 
 /* Header row of a card-back stat table. */
 .card-head {
-  background: var(--purple-deep);
+  background:
+    repeating-linear-gradient(-55deg, transparent 0 14px, rgb(255 255 255 / 0.04) 14px 16px),
+    var(--purple-deep);
   color: #fff;
 }
 @media (prefers-color-scheme: light) {
   .card-head {
-    background: var(--purple);
+    background:
+      repeating-linear-gradient(-55deg, transparent 0 14px, rgb(255 255 255 / 0.05) 14px 16px),
+      var(--purple);
   }
+}
+.card-head :is(h1, h2, h3, h4) {
+  color: #fff;
 }
 
 /* Trading-card frame: a solid edge, and a teal rule under the header band. */
@@ -188,4 +646,13 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 0;
   background: var(--teal-hi);
   cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .byf-loading::before {
+    animation: none;
+  }
+  .byf-btn {
+    transition: none;
+  }
 }

@@ -43,19 +43,19 @@ export default function TeamTradeColumn({
   const showDestPicker = otherTeamsInTrade.length > 1;
 
   return (
-    <div className="bg-surface rounded-sm border border-border flex flex-col min-w-[260px] sm:min-w-[280px]">
+    <div className="card-frame flex flex-col min-w-[260px] sm:min-w-[280px]">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
           <select
             value={teamName}
             onChange={(e) => onTeamChange(e.target.value)}
-            className="bg-surface-light text-text border border-border rounded-sm px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary"
+            className="byf-select"
           >
             <option value="">Select Team</option>
             {allTeams.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
           {canRemove && (
-            <button onClick={onRemove} className="text-text-dim hover:text-danger text-sm px-2">Remove</button>
+            <button onClick={onRemove} className="byf-btn byf-btn--ghost byf-btn--sm text-danger">Remove</button>
           )}
         </div>
         {teamName && (
@@ -84,7 +84,7 @@ export default function TeamTradeColumn({
                   const destKey = `${teamName}:${p.name}`;
                   const currentDest = destinationMap[destKey] || "";
                   return (
-                    <div key={p.name} className="bg-cap-over/10 rounded px-2 py-1.5">
+                    <div key={p.name} className="byf-tile px-2 py-1.5">
                       <div className="flex items-center justify-between text-sm">
                         <span>{p.name}</span>
                         <div className="flex items-center gap-2">
@@ -100,7 +100,7 @@ export default function TeamTradeColumn({
                               e.stopPropagation();
                               onSetDestination(p.name, e.target.value);
                             }}
-                            className="w-full bg-surface border border-border rounded px-2 py-0.5 text-xs text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
+                            className="byf-select"
                           >
                             <option value="">Send to...</option>
                             {otherTeamsInTrade.map((t) => (
@@ -148,7 +148,7 @@ export default function TeamTradeColumn({
             ) : (
               <div className="space-y-1">
                 {playersIn.map((p) => (
-                  <div key={p.name} className="flex items-center justify-between bg-cap-under/10 rounded px-2 py-1 text-sm">
+                  <div key={p.name} className="flex items-center justify-between byf-tile px-2 py-1 text-sm">
                     <span>{p.name}</span>
                     <span className="text-text-muted font-mono text-xs">{formatSalary(getCurrentSalary(p))}</span>
                   </div>
@@ -164,7 +164,7 @@ export default function TeamTradeColumn({
                 <button
                   key={p.name}
                   onClick={() => onAddPlayerOut(p)}
-                  className="w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-surface-light transition-colors text-left"
+                  className="w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-surface-light transition-colors text-left"
                 >
                   <span>{p.name}</span>
                   <span className="text-text-dim font-mono text-xs">{formatSalary(getCurrentSalary(p))}</span>

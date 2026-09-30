@@ -152,7 +152,7 @@ export default function RostersPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-text-muted text-lg">Loading rosters...</div>
+        <div className="byf-loading">Loading rosters...</div>
       </div>
     );
   }
@@ -172,21 +172,21 @@ export default function RostersPage() {
                 setShowPlayerResults(true);
               }}
               onFocus={() => setShowPlayerResults(true)}
-              className="bg-surface border border-border rounded-sm px-3 py-1.5 text-sm placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64"
+              className="byf-input w-full sm:w-64"
             />
             {/* Player search dropdown */}
             {showPlayerResults && playerSearchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-sm shadow-xl z-50 overflow-hidden">
-                <div className="px-3 py-1.5 text-xs text-text-dim border-b border-border font-blocky text-sm font-bold uppercase">
+              <div className="absolute top-full left-0 right-0 mt-1 card-frame shadow-xl z-50 overflow-hidden">
+                <div className="card-head px-3 py-1.5 font-blocky uppercase">
                   Players — click to trade
                 </div>
                 {playerSearchResults.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => handlePlayerClick(p)}
-                    className="w-full text-left px-3 py-2 hover:bg-surface-light transition-colors flex justify-between items-center"
+                    className="w-full text-left px-3 py-2 hover:bg-surface-light flex justify-between items-center"
                   >
-                    <span className="text-sm font-medium">{p.name}</span>
+                    <span className="text-sm">{p.name}</span>
                     <span className="text-xs text-text-dim">{p.team}</span>
                   </button>
                 ))}
@@ -197,11 +197,7 @@ export default function RostersPage() {
             <button
               key={conf}
               onClick={() => setConferenceFilter(conf)}
-              className={`px-3 py-1.5 rounded-sm text-sm font-medium transition-colors ${
-                conferenceFilter === conf
-                  ? "bg-primary text-white"
-                  : "bg-surface text-text-muted hover:text-text"
-              }`}
+              className={`byf-chip${conferenceFilter === conf ? " byf-chip--on" : ""}`}
             >
               {conf}
             </button>
@@ -236,7 +232,7 @@ export default function RostersPage() {
             <div className="p-4">
               <div className="flex items-center justify-between mb-1">
                 <span
-                  className={`text-xs px-1.5 py-0.5 border font-mono ${capStatusBg[team.capStatus]}`}
+                  className={`byf-tile font-mono ${capStatusBg[team.capStatus]}`}
                 >
                   <span className={capStatusColors[team.capStatus]}>
                     {capStatusLabel[team.capStatus]}
@@ -304,7 +300,7 @@ export default function RostersPage() {
                   const yStatus = getCapStatus(yCap, y);
                   const yDeadCap = openTeam.yearDeadCaps[y];
                   return (
-                    <div key={y} className={`rounded-sm border p-2 text-center ${capStatusBg[yStatus]}`}>
+                    <div key={y} className={`byf-tile p-2 text-center ${capStatusBg[yStatus]}`}>
                       <div className="text-[10px] text-text-dim font-medium">{y}</div>
                       <div className={`text-xs sm:text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
                         {formatSalary(yCap)} <span className="text-[10px] font-normal text-text-dim">(HC: {formatSalary(getHardCap(y))})</span>
@@ -322,7 +318,7 @@ export default function RostersPage() {
 
             {/* Player Roster */}
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[440px]">
+              <table className="byf-table w-full text-sm min-w-[440px]">
                 <thead>
                   <tr className="card-head text-xs font-blocky italic uppercase">
                     <th className="text-left px-4 py-2 font-extrabold">Player</th>

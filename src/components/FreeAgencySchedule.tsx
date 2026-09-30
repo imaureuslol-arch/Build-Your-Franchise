@@ -6,8 +6,8 @@ import { refreshLeague } from "@/lib/hooks";
 
 interface Bid { id: string; playerId: string; playerName: string; teamName: string; years: number[]; amounts: Record<string, number>; totalValue: number }
 interface Props { round: FreeAgencyRound; now: number; canManage: boolean; bids: Bid[]; awards: FreeAgencyAward[]; refresh: () => Promise<void> }
-const input = "bg-background border border-border rounded-sm px-3 py-2 text-sm w-full";
-const button = "px-3 py-2 bg-primary text-white rounded-sm text-sm disabled:opacity-40";
+const input = "byf-input";
+const button = "byf-btn byf-btn--primary";
 
 export default function FreeAgencySchedule({ round, now, canManage, bids, awards, refresh }: Props) {
   const closed = round.closes_at != null && Date.parse(round.closes_at) <= now;
@@ -33,7 +33,7 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save."); }
     finally { setBusy(null); }
   }
-  return <section className="mb-6 border border-border rounded-sm bg-surface p-4 sm:p-5 space-y-4">
+  return <section className="mb-6 card-frame p-4 sm:p-5 space-y-4">
     <div className="flex flex-wrap justify-between gap-4 items-center">
       <div><h2 className="text-xl">{closed ? "Bidding closed" : "Free-agency deadline"}</h2>
         <p className="text-sm text-text-muted mt-1">{round.closes_at
@@ -48,7 +48,7 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
     <p className="text-xs text-text-dim">{closed
       ? "Winning bids are listed below. A commissioner must apply each award; Sleeper moves remain manual."
       : "At the deadline, bidding closes and winning bids are shown. A commissioner then applies the awards."}</p>
-    {error && <p role="alert" className="text-sm text-cap-over">{error}</p>}
+    {error && <p role="alert" className="byf-alert byf-alert--danger">{error}</p>}
     {canManage && <DeadlineForm key={round.id + ":" + round.closes_at} deadline={round.closes_at} closed={closed}
       disabled={busy != null || (closed && pending > 0)}
       submit={closesAt => act("deadline", { action: closed ? "new_round" : "deadline", closesAt })} />}
@@ -62,7 +62,7 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
         const top = offers.filter(o => getWeightedValue(o) === bestValue);
         const choice = top.length === 1 ? top[0].id : choices[id] ?? "";
         const winner = top.find(o => o.id === choice);
-        return <div key={id} className="border border-border rounded-sm p-3 space-y-2">
+        return <div key={id} className="card-frame p-3 space-y-2">
           <div className="flex flex-wrap justify-between gap-2"><h4 className="font-semibold">{offers[0].playerName}</h4>
             <span className={result ? "text-cap-under text-sm" : "text-text-muted text-sm"}>{result ? result.offer_id ? "Award applied" : "Dismissed" : top.length > 1 ? "Tied bids" : "Awaiting award"}</span></div>
           {result ? <p className="text-sm">{result.offer_id ? result.team_name : result.note}
@@ -70,7 +70,7 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
           : <>
             {top.length === 1 ? <p className="text-sm">Winner: <strong>{top[0].teamName}</strong> · {formatSalary(bestValue)} weighted</p>
               : <div className="space-y-2"><p className="text-sm">{top.length} bids tied at {formatSalary(bestValue)} weighted. Commissioner selection required.</p>
-                {canManage ? <select aria-label={`Choose tied winner for ${offers[0].playerName}`} className={input} value={choice}
+                {canManage ? <select aria-label={`Choose tied winner for ${offers[0].playerName}`} className="byf-select" value={choice}
                   onChange={e => setChoices(old => ({ ...old, [id]: e.target.value }))}>
                   <option value="">Choose a tied bid</option>{top.map(o => <option key={o.id} value={o.id}>{o.teamName} · {o.years.map(y => `${y}: ${formatSalary(o.amounts[y])}`).join(", ")}</option>)}
                 </select> : <p className="text-sm text-text-muted">{top.map(o => o.teamName).join(" / ")}</p>}
@@ -79,7 +79,7 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
             {canManage && <div className="flex flex-wrap gap-3">
               <button className={button} disabled={busy != null || !choice}
                 onClick={() => act(id, { action: "award", playerId: Number(id), offerId: choice })}>{busy === id ? "Saving…" : "Apply award"}</button>
-              <button className="text-xs text-text-dim underline" disabled={busy != null} onClick={() => {
+              <button className="byf-btn byf-btn--ghost byf-btn--sm" disabled={busy != null} onClick={() => {
                 const note = prompt("Reason for dismissing all bids on " + offers[0].playerName + ":");
                 if (note?.trim()) void act(id, { action: "dismiss", playerId: Number(id), note });
               }}>Dismiss bids</button>

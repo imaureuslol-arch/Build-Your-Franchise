@@ -286,7 +286,7 @@ export default function ExtensionsPage() {
 
   if (loading)
     return (
-      <div className="flex items-center justify-center h-96 text-text-muted">
+      <div className="flex items-center justify-center h-96 byf-loading">
         Loading...
       </div>
     );
@@ -316,14 +316,14 @@ export default function ExtensionsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1 flex flex-col gap-6">
-          <div className="bg-surface rounded-sm border border-border overflow-hidden">
+          <div className="card-frame overflow-hidden">
             <div className="p-4 border-b border-border">
               <input
                 type="text"
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-surface-light border border-border rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="byf-input"
               />
             </div>
             <div className="max-h-[600px] overflow-y-auto">
@@ -348,16 +348,16 @@ export default function ExtensionsPage() {
 
         <div className="lg:col-span-3 flex flex-col gap-6">
           {!selectedPlayer ? (
-            <div className="bg-surface rounded-sm border border-border flex items-center justify-center h-96 text-text-dim">
+            <div className="card-frame flex items-center justify-center h-96 text-text-dim">
               Select a player to begin
             </div>
           ) : (
-            <div className="bg-surface rounded-sm border border-border flex flex-col h-[600px] sm:h-[700px]">
+            <div className="card-frame flex flex-col h-[600px] sm:h-[700px]">
               <div className="p-4 border-b border-border flex justify-between items-start">
                 <div>
                   <h2 className="font-bold text-lg">{selectedPlayer.name}</h2>
                   {statsLoading ? (
-                    <p className="text-xs text-text-dim mt-0.5">Loading player info…</p>
+                    <p className="byf-loading mt-0.5">Loading player info…</p>
                   ) : statsError ? (
                     <p className="text-xs text-cap-over mt-0.5">{statsError}</p>
                   ) : playerStats ? (
@@ -385,10 +385,10 @@ export default function ExtensionsPage() {
                       className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-sm px-4 py-2.5 text-sm ${
+                        className={`max-w-[80%] px-4 py-2.5 text-sm ${
                           msg.role === "user"
-                            ? "bg-primary text-white"
-                            : "bg-surface-light text-text"
+                            ? "byf-tile bg-primary text-white"
+                            : "byf-tile"
                         }`}
                       >
                         {msg.content}
@@ -406,13 +406,13 @@ export default function ExtensionsPage() {
                   <div className="flex gap-3">
                     <button
                       onClick={() => handleFinalDecision(true)}
-                      className="flex-1 py-3 bg-cap-under text-white rounded-sm font-bold hover:opacity-90 transition-opacity"
+                      className="byf-btn byf-btn--ok flex-1"
                     >
                       ACCEPT ({formatSalary(finalDemandAmount)}/yr)
                     </button>
                     <button
                       onClick={() => handleFinalDecision(false)}
-                      className="flex-1 py-3 bg-cap-over text-white rounded-sm font-bold hover:opacity-90 transition-opacity"
+                      className="byf-btn byf-btn--danger flex-1"
                     >
                       DECLINE
                     </button>
@@ -435,11 +435,7 @@ export default function ExtensionsPage() {
                             key={year}
                             disabled={isDisabled}
                             onClick={() => toggleYear(year)}
-                            className={`px-4 py-1.5 rounded-sm text-sm font-medium transition-colors ${
-                              isSelected
-                                ? "bg-primary text-white"
-                                : "bg-surface-light text-text-muted border border-border"
-                            } ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
+                            className={`byf-chip ${isSelected ? "byf-chip--on" : ""} ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
                           >
                             {year}
                           </button>
@@ -474,14 +470,14 @@ export default function ExtensionsPage() {
                       ))}
                   </div>
                   {validationError && (
-                    <div className="mb-3 p-2 bg-red-500/10 border border-red-500/50 rounded text-red-500 text-xs">
+                    <div className="mb-3 byf-alert byf-alert--danger">
                       {validationError}
                     </div>
                   )}
                   <button
                     onClick={submitOffer}
                     disabled={selectedYears.length === 0 || submitting}
-                    className="w-full py-2.5 bg-primary text-white rounded-sm font-medium disabled:opacity-40"
+                    className="byf-btn byf-btn--primary byf-btn--block"
                   >
                     Submit Offer ({Math.min(offersUsed + 1, 3)}/3)
                   </button>
@@ -496,7 +492,7 @@ export default function ExtensionsPage() {
                   {agreementReached ? (
                     <button
                       onClick={() => setShowCopyPopup(true)}
-                      className="px-4 py-2 rounded-sm text-sm font-medium bg-cap-under text-white"
+                      className="byf-btn byf-btn--ok"
                     >
                       View Details
                     </button>
@@ -508,13 +504,13 @@ export default function ExtensionsPage() {
             </div>
           )}
 
-          <div className="bg-surface rounded-sm border border-border overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
+          <div className="card-frame overflow-hidden">
+            <div className="card-head px-4 py-3 flex items-center justify-between gap-3">
               <h3 className="text-sm font-bold">Extension History</h3>
             </div>
             <div className="max-h-[500px] overflow-y-auto">
               {extensions.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-text-dim text-center">No extensions yet</p>
+                <p className="px-4 py-6 byf-empty">No extensions yet</p>
               ) : (
                 <>
                   {myExtensions.length > 0 && (
@@ -571,21 +567,21 @@ export default function ExtensionsPage() {
 
       {showCopyPopup && finalOffer && selectedPlayer && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface rounded-sm p-6 max-w-md w-full border border-border">
+          <div className="card-frame p-6 max-w-md w-full">
             <h3 className="text-lg font-bold mb-4 text-cap-under">Extension Signed</h3>
-            <pre className="bg-surface-light rounded-sm p-4 text-sm font-mono whitespace-pre-wrap mb-4">
+            <pre className="byf-code whitespace-pre-wrap mb-4">
               {getCopyText()}
             </pre>
             <div className="flex gap-3">
               <button
                 onClick={() => navigator.clipboard.writeText(getCopyText())}
-                className="flex-1 py-2.5 bg-primary text-white rounded-sm font-medium"
+                className="byf-btn byf-btn--primary flex-1"
               >
                 Copy
               </button>
               <button
                 onClick={() => setShowCopyPopup(false)}
-                className="flex-1 py-2.5 bg-surface-light border border-border rounded-sm"
+                className="byf-btn byf-btn--secondary flex-1"
               >
                 Close
               </button>
