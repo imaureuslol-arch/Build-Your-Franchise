@@ -71,3 +71,13 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Commissioner contracts and free agency
+
+Run `node scripts/migrate.mjs` before deploying this update (after `db/schema.sql` for a fresh database).
+Both commissioner roles can correct player teams and 2027–2030 salaries, and add/edit/remove labelled dead-cap charges or retention credits. Blank salary fields remove that season; free agents cannot keep current contract rows. Changes are audited and stale edits are rejected.
+
+On Free Agency, set a deadline in the displayed local timezone. The countdown follows the server clock. The database closes bids at the deadline; a commissioner applies each winning bid to the roster and contracts. Equal weighted bids require selection among the tied bids. Awarding is atomic and repeat-safe. Dismiss invalid awards with a recorded reason. A new round can start after every player with bids is awarded or dismissed. Sleeper transactions remain manual.
+
+Database regression checks: `node scripts/test-commissioner.mjs`. This creates and removes a separate temporary database using the configured Neon account, with fake league data only.
+

@@ -3,7 +3,9 @@
 export const dynamic = "force-dynamic";
 
 import { useMemo, useState, useEffect, useCallback, useDeferredValue } from "react";
-import { usePlayers } from "@/lib/hooks";
+import { usePlayers, refreshLeague } from "@/lib/hooks";
+import FreeAgencySchedule from "@/components/FreeAgencySchedule";
+import { getWeightedValue, MIN_OFFER_PER_YEAR, type FreeAgencyRound, type FreeAgencyAward } from "@/lib/free-agency-rules";
 import { useUserTeam } from "@/lib/user-context";
 import {
   Player,
@@ -15,22 +17,8 @@ import {
   getCurrentSalary,
 } from "@/lib/types";
 
-const MIN_OFFER_PER_YEAR = 4_000_000;
 const FREE_AGENT_ROWS = 60;
 const MAX_VARIANCE = 0.10; // 10%
-// Frontloaded contracts win ties. Each year out from the start discounts
-// 25%, so $100M over 2yr beats $100M over 4yr on the same total outlay.
-const BID_DISCOUNT_RATE = 0.25;
-
-function getWeightedValue(offer: Pick<FAOffer, "years" | "amounts">): number {
-  const sorted = [...offer.years].sort((a, b) => a - b);
-  const raw = sorted.reduce(
-    (sum, y, i) => sum + (offer.amounts[y] ?? 0) / Math.pow(1 + BID_DISCOUNT_RATE, i),
-    0
-  );
-  return Math.round(raw / 1_000_000) * 1_000_000;
-}
-
 interface FAOffer {
   id: string;
   playerId: string;
@@ -62,7 +50,7 @@ function rowToOffer(row: FAOfferRow): FAOffer {
   }
   return {
     id: row.id,
-    playerId: row.player_id,
+    playerId: String(row.player_id),
     playerName: row.player_name,
     userName: row.user_name,
     teamName: row.team_name,
@@ -79,6 +67,13 @@ export default function FreeAgencyPage() {
   const canClear = isWhitelisted || isSubCommish;
   const loading = pLoading || teamLoading;
 
+  const [round, setRound] = useState<FreeAgencyRound | null>(null);
+  const [awards, setAwards] = useState<FreeAgencyAward[]>([]);
+  const [serverClock, setServerClock] = useState<{ server: number; local: number } | null>(null);
+  const [now, setNow] = useState(0);
+  const [loadError, setLoadError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const biddingOpen = !!round?.closes_at && now < Date.parse(round.closes_at);
   const [searchQuery, setSearchQuery] = useState("");
   // Bids are placed as the logged-in team; the server checks this too
   const selectedUser = myOwner?.user_name ?? "";
@@ -95,20 +90,35 @@ export default function FreeAgencyPage() {
     try {
       const res = await fetch("/api/free-agent-offers");
       const data = await res.json();
-      if (res.ok) setOfferHistory((data.offers as FAOfferRow[]).map(rowToOffer));
+      if (!res.ok) throw new Error(data.error ?? "Could not load bidding data.");
+      setOfferHistory((data.offers as FAOfferRow[]).map(rowToOffer));
+      setRound(data.round);
+      setAwards(data.awards);
+      const server = Date.parse(data.serverNow);
+      setServerClock({ server, local: performance.now() });
+      setNow(server);
+      setLoadError("");
     } catch (e) {
-      console.error("Failed to load free-agent offers:", e);
+      setLoadError(e instanceof Error ? e.message : "Could not load bidding data.");
     }
     setOffersLoading(false);
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshOffers();
     // Other owners' bids show up within 15 seconds.
     const timer = setInterval(refreshOffers, 15_000);
     return () => clearInterval(timer);
   }, [refreshOffers]);
+
+  useEffect(() => {
+    if (!serverClock) return;
+    const timer = setInterval(() => setNow(serverClock.server + performance.now() - serverClock.local), 1000);
+    return () => clearInterval(timer);
+  }, [serverClock]);
+
+  const awardVersion = awards.map(a => a.player_id + ":" + a.awarded_at).join(",");
+  useEffect(() => { if (awardVersion) refreshLeague(); }, [awardVersion]);
 
   const myTeamCap = useMemo(() => {
     if (!myOwner) return 0;
@@ -175,6 +185,8 @@ export default function FreeAgencyPage() {
 
   function getOfferErrors(): string[] {
     const errors: string[] = [];
+    if (!biddingOpen) errors.push("Bidding is closed");
+    if (loadError) errors.push("Bidding data could not be refreshed");
     if (!selectedUser) errors.push("Open your login link to bid");
     if (!selectedPlayer) errors.push("Select a player");
     if (offerYears.length === 0) errors.push("Select at least one year");
@@ -182,7 +194,7 @@ export default function FreeAgencyPage() {
     const sorted = [...offerYears].sort((a, b) => a - b);
     for (let i = 0; i < sorted.length; i++) {
       const yr = sorted[i];
-      const amt = yearAmounts[yr];
+      const amt = isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[yr];
 
       if (amt < MIN_OFFER_PER_YEAR) {
         errors.push(`${yr} must be at least ${formatSalary(MIN_OFFER_PER_YEAR)}`);
@@ -201,7 +213,9 @@ export default function FreeAgencyPage() {
 
   async function handleSubmit() {
     const currentErrors = getOfferErrors();
-    if (currentErrors.length > 0 || !selectedPlayer) return;
+    if (currentErrors.length > 0 || !selectedPlayer || submitting) return;
+    setSubmitting(true);
+    try {
 
     const amounts: { [year: number]: number } = {};
     for (const y of offerYears) amounts[y] = isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[y];
@@ -209,7 +223,7 @@ export default function FreeAgencyPage() {
     const res = await fetch("/api/free-agent-offers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ player_id: selectedPlayer.id, years: [...offerYears], amounts }),
+      body: JSON.stringify({ roundId: round?.id, player_id: selectedPlayer.id, years: [...offerYears], amounts }),
     });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data?.offer) {
@@ -218,7 +232,7 @@ export default function FreeAgencyPage() {
     }
 
     const offer = rowToOffer({ ...(data.offer as FAOfferRow), user_name: myOwner?.user_name ?? "" });
-    // Optimistic update; realtime subscription will also fire
+    // Polling reconciles other owners’ bids.
     setOfferHistory((prev) =>
       prev.some((o) => o.id === offer.id) ? prev : [offer, ...prev]
     );
@@ -227,11 +241,13 @@ export default function FreeAgencyPage() {
 
     setOfferYears([]);
     setSelectedPlayer(null);
+    } catch { alert("Could not submit the bid. Refresh and try again."); }
+    finally { setSubmitting(false); }
   }
 
   async function handleClear(playerId: string) {
     if (!confirm("Clear every bid on this player?")) return;
-    const res = await fetch(`/api/free-agent-offers?player_id=${playerId}`, { method: "DELETE" });
+    const res = await fetch(`/api/free-agent-offers?player_id=${playerId}&round_id=${round?.id}`, { method: "DELETE" });
     if (!res.ok) {
       alert("Failed to clear offers. Please try again.");
       return;
@@ -252,6 +268,8 @@ export default function FreeAgencyPage() {
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <h1 className="text-4xl mb-6">Free Agency Tracker</h1>
+      {loadError && <p role="alert" className="mb-4 text-sm text-cap-over">{loadError} <button className="underline" onClick={refreshOffers}>Retry</button></p>}
+      {round && <FreeAgencySchedule round={round} now={now} canManage={canClear} bids={offerHistory} awards={awards} refresh={refreshOffers} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Player List */}
@@ -405,10 +423,10 @@ export default function FreeAgencyPage() {
 
               <button
                 onClick={handleSubmit}
-                disabled={errors.length > 0}
+                disabled={errors.length > 0 || submitting}
                 className="w-full py-3 bg-primary text-white rounded-sm font-bold hover:bg-primary-hover disabled:opacity-30"
               >
-                Submit Official Bid
+                {submitting ? "Submitting…" : "Submit Official Bid"}
               </button>
             </div>
           )}
@@ -460,7 +478,7 @@ export default function FreeAgencyPage() {
                             </div>
                           </div>
                         ))}
-                        {canClear && <button
+                        {canClear && biddingOpen && <button
                           onClick={() => handleClear(pId)}
                           className="w-full py-1 text-[10px] text-cap-over font-bold uppercase hover:underline"
                         >

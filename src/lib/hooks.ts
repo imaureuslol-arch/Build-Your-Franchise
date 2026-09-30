@@ -11,6 +11,11 @@ interface League {
 // One /api/league request per page load, shared by every hook that needs it.
 let leaguePromise: Promise<League> | null = null;
 
+export function refreshLeague() {
+  leaguePromise = null;
+  window.dispatchEvent(new Event("byf-league-changed"));
+}
+
 function loadLeague(): Promise<League> {
   if (!leaguePromise) {
     leaguePromise = fetch("/api/league")
@@ -32,10 +37,13 @@ export function usePlayers() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadLeague().then((l) => {
+    const update = () => loadLeague().then((l) => {
       setPlayers(l.players);
       setLoading(false);
     });
+    update();
+    window.addEventListener("byf-league-changed", update);
+    return () => window.removeEventListener("byf-league-changed", update);
   }, []);
 
   return { players, loading };
@@ -46,10 +54,13 @@ export function useTeamOwners() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadLeague().then((l) => {
+    const update = () => loadLeague().then((l) => {
       setOwners(new Map(l.owners.map((o) => [o.team_name, o])));
       setLoading(false);
     });
+    update();
+    window.addEventListener("byf-league-changed", update);
+    return () => window.removeEventListener("byf-league-changed", update);
   }, []);
 
   return { owners, loading };

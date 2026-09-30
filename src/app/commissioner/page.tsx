@@ -8,6 +8,7 @@ import { usePlayers } from "@/lib/hooks";
 import { Player, FREE_AGENCY_TEAM, formatSalary, getCurrentSalary } from "@/lib/types";
 import LoginLinks from "@/components/LoginLinks";
 import SyncIssues from "@/components/SyncIssues";
+import ContractManager from "@/components/ContractManager";
 
 interface PlayerValues {
   [id: number]: { fairValue: number; age: number };
@@ -184,6 +185,7 @@ export default function CommissionerPage() {
     <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col lg:flex-row gap-6">
       <div className="flex-1 min-w-0 space-y-8">
       <h1 className="text-4xl">Commissioner Tools</h1>
+      <ContractManager />
 
       {/* Search */}
       <section className="space-y-3">
