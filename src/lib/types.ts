@@ -143,7 +143,11 @@ export function formatSalary(amount: number | null): string {
   if (amount == null || amount === 0) return "-";
   const abs = Math.abs(amount);
   const sign = amount < 0 ? "-" : "";
-  if (abs >= 1_000_000) return `${sign}$${Math.round(abs / 1_000_000)}M`;
+  if (abs >= 1_000_000) {
+    // Whole millions stay "$42M"; anything else (league minimums) shows one decimal.
+    const m = abs / 1_000_000;
+    return `${sign}$${Number.isInteger(m) ? m : m.toFixed(1)}M`;
+  }
   if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
   return `${sign}$${abs.toLocaleString()}`;
 }

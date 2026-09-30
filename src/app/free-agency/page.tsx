@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useMemo, useState, useEffect, useCallback, useDeferredValue } from "react";
 import { usePlayers, refreshLeague } from "@/lib/hooks";
 import FreeAgencySchedule from "@/components/FreeAgencySchedule";
-import { getWeightedValue, MIN_OFFER_PER_YEAR, type FreeAgencyRound, type FreeAgencyAward } from "@/lib/free-agency-rules";
+import { getWeightedValue, minOffer, type FreeAgencyRound, type FreeAgencyAward } from "@/lib/free-agency-rules";
 import { useUserTeam } from "@/lib/user-context";
 import {
   Player,
@@ -194,10 +194,10 @@ export default function FreeAgencyPage() {
     const sorted = [...offerYears].sort((a, b) => a - b);
     for (let i = 0; i < sorted.length; i++) {
       const yr = sorted[i];
-      const amt = isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[yr];
+      const amt = isOverHardCap ? minOffer(yr) : yearAmounts[yr];
 
-      if (amt < MIN_OFFER_PER_YEAR) {
-        errors.push(`${yr} must be at least ${formatSalary(MIN_OFFER_PER_YEAR)}`);
+      if (amt < minOffer(yr)) {
+        errors.push(`${yr} must be at least ${formatSalary(minOffer(yr))}`);
       }
 
       if (i > 0) {
@@ -218,7 +218,7 @@ export default function FreeAgencyPage() {
     try {
 
     const amounts: { [year: number]: number } = {};
-    for (const y of offerYears) amounts[y] = isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[y];
+    for (const y of offerYears) amounts[y] = isOverHardCap ? minOffer(y) : yearAmounts[y];
 
     const res = await fetch("/api/free-agent-offers", {
       method: "POST",
@@ -356,7 +356,7 @@ export default function FreeAgencyPage() {
 
               {isOverHardCap && (
                 <div className="bg-cap-over/10 border border-cap-over/30 rounded-sm p-3 mb-4 text-xs text-cap-over">
-                  Your team is over the hard cap — offers are locked to the minimum ({formatSalary(MIN_OFFER_PER_YEAR)}/yr).
+                  Your team is over the hard cap — offers are locked to the minimum (the veteran minimum each season).
                 </div>
               )}
 
@@ -367,14 +367,14 @@ export default function FreeAgencyPage() {
                       <div className="flex justify-between text-sm mb-1">
                         <span className="text-text-muted">{year}</span>
                         <span className="font-mono font-bold">
-                          {formatSalary(isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[year])}
+                          {formatSalary(isOverHardCap ? minOffer(year) : yearAmounts[year])}
                         </span>
                       </div>
                       <input
                         type="range" min={1_000_000} max={80_000_000} step={1_000_000}
-                        value={isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[year]}
+                        value={isOverHardCap ? minOffer(year) : yearAmounts[year]}
                         disabled={isOverHardCap}
-                        onChange={(e) => setYearAmounts(prev => ({ ...prev, [year]: parseInt(e.target.value) }))}
+                        onChange={(e) => setYearAmounts(prev => ({ ...prev, [year]: Math.max(minOffer(year), parseInt(e.target.value)) }))}
                         className="w-full accent-primary disabled:opacity-40"
                       />
                     </div>
@@ -391,7 +391,7 @@ export default function FreeAgencyPage() {
               {offerYears.length > 0 && (() => {
                 const sortedYrs = [...offerYears].sort((a, b) => a - b);
                 const amts: { [y: number]: number } = {};
-                for (const y of sortedYrs) amts[y] = isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[y];
+                for (const y of sortedYrs) amts[y] = isOverHardCap ? minOffer(y) : yearAmounts[y];
                 const myWeighted = getWeightedValue({ years: sortedYrs, amounts: amts });
                 const myTotal = sortedYrs.reduce((s, y) => s + amts[y], 0);
                 const existing = offersByPlayer.get(String(selectedPlayer.id)) ?? [];

@@ -1,4 +1,9 @@
-export const MIN_OFFER_PER_YEAR = 4_000_000;
+import { getVetMin } from "./types";
+
+/** Smallest bid for a season: that season's veteran minimum. */
+export function minOffer(season: number): number {
+  return getVetMin(season);
+}
 /** Existing ranking: discount later years by 25%, round to $1M. */
 export function getWeightedValue(offer: { years: number[]; amounts: Record<string, number> }): number {
   const value = [...offer.years].sort((a, b) => a - b).reduce(
