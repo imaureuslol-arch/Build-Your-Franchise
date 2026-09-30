@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useDeferredValue } from "react";
 import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/lib/types";
 
 const MIN_OFFER_PER_YEAR = 4_000_000;
+const FREE_AGENT_ROWS = 60;
 const MAX_VARIANCE = 0.10; // 10%
 // Frontloaded contracts win ties. Each year out from the start discounts
 // 25%, so $100M over 2yr beats $100M over 4yr on the same total outlay.
@@ -125,9 +126,15 @@ export default function FreeAgencyPage() {
     [players]
   );
 
-  const filteredFreeAgents = searchQuery
-    ? freeAgents.filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : freeAgents;
+  // The pool is every unrostered NBA player (~300), so only the best
+  // FREE_AGENT_ROWS are drawn; searching reaches the rest. The deferred query
+  // keeps typing responsive while the list catches up.
+  const deferredQuery = useDeferredValue(searchQuery);
+  const filteredFreeAgents = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    const matches = q ? freeAgents.filter((p) => p.name.toLowerCase().includes(q)) : freeAgents;
+    return matches.slice(0, FREE_AGENT_ROWS);
+  }, [freeAgents, deferredQuery]);
 
   const availableYears = (SALARY_YEARS as readonly number[]).filter((y) => y >= getCurrentSeasonYear());
 
