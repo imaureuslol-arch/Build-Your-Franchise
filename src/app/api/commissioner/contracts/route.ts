@@ -6,7 +6,7 @@ export async function GET() {
   const [players, teams, deadCap] = await Promise.all([
     sql`select p.id, p.name, p.team_id as "teamId", coalesce(
       (select jsonb_object_agg(c.season::text, c.amount) from contracts c
-       where c.player_id = p.id and c.season between 2027 and 2030), '{}') as contracts
+       where c.player_id = p.id and c.season between byf_current_season() and byf_current_season() + 3), '{}') as contracts
       from players p order by p.name`,
     sql`select id, name from teams order by name`,
     sql`select id, team_id, label, season, amount::float8 as amount from dead_cap order by team_id, season, label`,

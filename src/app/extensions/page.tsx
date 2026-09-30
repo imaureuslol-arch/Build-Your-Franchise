@@ -11,8 +11,8 @@ import {
   isEligibleForExtension,
   getExtensionYears,
   formatSalary,
-  getFairValueForYear,
 } from "@/lib/types";
+import { MAX_OFFERS, MAX_SALARY, YOUNG_MAX_SALARY, maxSalaryForAge } from "@/lib/extensions";
 
 interface PlayerStats {
   fairValue: number; // millions
@@ -92,8 +92,7 @@ export default function ExtensionsPage() {
 
   const [isFinalDemand, setIsFinalDemand] = useState(false);
   const [finalDemandAmount, setFinalDemandAmount] = useState<number>(0);
-  const [bestRatioSoFar, setBestRatioSoFar] = useState<number>(0);
-  const [lastOfferAvg, setLastOfferAvg] = useState<number>(0);
+  const [submitting, setSubmitting] = useState(false);
 
   const eligiblePlayers = allPlayers.filter(
     (p) =>
@@ -106,35 +105,6 @@ export default function ExtensionsPage() {
         p.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : eligiblePlayers;
-
-  async function saveExtension(
-    player: Player,
-    years: number[],
-    amounts: { [year: number]: number },
-    accepted: boolean
-  ) {
-    const total = Object.values(amounts).reduce((s, v) => s + v, 0);
-    try {
-      await fetch("/api/extensions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          player_id: player.id,
-          player_name: player.name,
-          team_name: player.team,
-          user_name: owner?.user_name ?? teamName,
-          years,
-          amounts,
-          total_value: total,
-          accepted,
-        }),
-      });
-      // Refresh the locked list so the player disappears from sidebar
-      fetchExtensions();
-    } catch {
-      /* best-effort — the copy text is still the record */
-    }
-  }
 
   async function startNegotiation(player: Player) {
     setSelectedPlayer(player);
@@ -154,11 +124,34 @@ export default function ExtensionsPage() {
     setFinalOffer(null);
     setSelectedYears([]);
     setValidationError(null);
-    setBestRatioSoFar(0);
-    setLastOfferAvg(0);
     setYearAmounts(
       Object.fromEntries(getExtensionYears(player).map((y) => [y, 10_000_000]))
     );
+
+    // Pick up where this negotiation left off: offers used and any final
+    // demand live on the server.
+    fetch(`/api/extensions/negotiate?player_id=${player.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((state) => {
+        if (!state) return;
+        setOffersUsed(state.offersUsed ?? 0);
+        if (state.offersUsed > 0) {
+          setChat((prev) => [...prev, {
+            role: "player",
+            content: `We already talked. You've used ${state.offersUsed} of ${MAX_OFFERS} offers.`,
+          }]);
+        }
+        if (state.demand) {
+          setSelectedYears(state.demand.years);
+          setFinalDemandAmount(state.demand.amount);
+          setIsFinalDemand(true);
+          setChat((prev) => [...prev, {
+            role: "player",
+            content: `My final demand stands: ${formatSalary(state.demand.amount)} per year for ${state.demand.years.length} ${state.demand.years.length === 1 ? "year" : "years"}.`,
+          }]);
+        }
+      })
+      .catch(() => {});
 
     try {
       const res = await fetch(
@@ -168,14 +161,15 @@ export default function ExtensionsPage() {
       if (res.ok) {
         const stats = data as PlayerStats;
         setPlayerStats(stats);
-        const maxSalary = stats.age <= 23 ? 60_000_000 : 80_000_000;
-        if (stats.fairValue * 1_000_000 > maxSalary) {
-          setChat([
+        if (stats.fairValue * 1_000_000 > maxSalaryForAge(stats.age)) {
+          // Swap only the opening line; anything restored after it stays.
+          setChat((prev) => [
             {
               role: "player",
               content:
                 "I know what I'm worth, you know what I'm worth. Just put down the max and let's get to work.",
             },
+            ...prev.slice(1),
           ]);
         }
       } else {
@@ -204,238 +198,77 @@ export default function ExtensionsPage() {
     setValidationError(null);
   }
 
-  function submitOffer() {
-    if (
-      !selectedPlayer ||
-      !playerStats ||
-      selectedYears.length === 0 ||
-      negotiationDone
-    )
-      return;
+  async function submitOffer() {
+    if (!selectedPlayer || !playerStats || selectedYears.length === 0 || negotiationDone || submitting) return;
+    const years = [...selectedYears].sort((a, b) => a - b);
+    const amounts: { [year: number]: number } = {};
+    for (const y of years) amounts[y] = yearAmounts[y];
 
-    // Floor at $2M — players worth less than that still demand the league minimum.
-    const baseFV = Math.max(2, playerStats.fairValue); // millions
-    const maxSalary = isYoungPlayer ? YOUNG_MAX_SALARY : 80_000_000;
-    // Cap fair value at the player's max salary tier
-    const cappedFV = Math.min(baseFV, maxSalary / 1_000_000);
-    // True FV exceeds the age-tier cap — player demands exactly the cap and
-    // won't take anything below it.
-    const isSnappedToCap = baseFV * 1_000_000 > maxSalary;
-    // Inflate per year, but cap each year individually so growth never exceeds the max
-    const avgFairValue =
-      selectedYears.reduce((sum, y) => sum + Math.min(getFairValueForYear(cappedFV, y) * 1_000_000, maxSalary), 0) /
-      selectedYears.length;
-    const effectiveFairValue = avgFairValue;
-    const currentTotal = selectedYears.reduce(
-      (sum, year) => sum + (yearAmounts[year] || 0),
-      0
-    );
-    const currentAvg = currentTotal / selectedYears.length;
-
-    // 1. Validation: Prevent lowering offers
-    if (offersUsed > 0 && currentAvg < lastOfferAvg) {
-      setValidationError(
-        `You can't lower your offer! Your last offer averaged ${formatSalary(lastOfferAvg)}.`
-      );
-      return;
-    }
-
-    // 2. Validation: Salary variance (10% rule)
-    const sortedYears = [...selectedYears].sort((a, b) => a - b);
-    for (let i = 1; i < sortedYears.length; i++) {
-      const prevYear = sortedYears[i - 1];
-      const currYear = sortedYears[i];
-      const diff = Math.abs(yearAmounts[currYear] - yearAmounts[prevYear]);
-      if (diff > yearAmounts[prevYear] * 0.1) {
-        setValidationError(
-          `Salary variance too high: ${currYear} must be within 10% of ${prevYear}`
-        );
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/extensions/negotiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player_id: selectedPlayer.id, action: "offer", years, amounts }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setValidationError(data.error ?? "That offer didn't go through.");
         return;
       }
-    }
+      setValidationError(null);
 
-    setValidationError(null);
-
-    // 3. Logic for "Insulting" offers and Attempt Penalties
-    const currentRatio = currentAvg / effectiveFairValue;
-    const isInsulting = currentRatio < 0.4;
-    const attemptCost = isInsulting ? 2 : 1;
-    const newOffersUsedTotal = offersUsed + attemptCost;
-
-    const amounts: { [year: number]: number } = {};
-    for (const y of selectedYears) amounts[y] = yearAmounts[y];
-
-    const yearLabel = selectedYears.length === 1 ? "year" : "years";
-    const yearDetails = selectedYears
-      .sort()
-      .map((y) => `${y}: ${formatSalary(amounts[y])}`)
-      .join(", ");
-
-    // Create User Message with penalty indicator
-    const userMsg: ChatMessage = {
-      role: "user",
-      content: `Offer #${offersUsed + 1}${isInsulting ? " (PLAYER INSULTED. 2 OFFERS USED)" : ""}: ${selectedYears.length} ${yearLabel} — ${yearDetails}`,
-      offer: { years: selectedYears, amounts },
-    };
-
-    const playerResponse = generatePlayerResponse(
-      effectiveFairValue,
-      amounts,
-      selectedYears,
-      newOffersUsedTotal, // Pass the penalized total
-      isSnappedToCap
-    );
-
-    const updatedBestRatio = Math.max(bestRatioSoFar, currentRatio);
-    setBestRatioSoFar(updatedBestRatio);
-    setLastOfferAvg(currentAvg);
-
-    // 4. Handle Ultimatum vs Response
-    if (!playerResponse.accepted && newOffersUsedTotal >= 3) {
-      const isSoften = updatedBestRatio >= 0.8;
-      const multiplier = isSoften ? 1.1 : 1.5;
-      const rawDemand = effectiveFairValue * multiplier;
-      const demandVal = Math.min(rawDemand, maxSalary);
-
-      setFinalDemandAmount(demandVal);
-      setIsFinalDemand(true);
-
-      const ultimatumMsg: ChatMessage = {
-        role: "player",
-        content: isInsulting
-          ? `That offer is a slap in the face. You're wasting my time. My final demand is ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel}. Take it or I'm hitting the market.`
-          : isSoften
-          ? `Look, your last offer was close, and I'd like to stay here. Give me ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel} and I'll sign right now.`
-          : `Alright. I'm done playing games. Pay me what I'm worth or I'm leaving. My final demand is ${formatSalary(demandVal)} per year for ${selectedYears.length} ${yearLabel}.`,
+      const label = years.length === 1 ? "year" : "years";
+      const details = years.map((y) => `${y}: ${formatSalary(amounts[y])}`).join(", ");
+      const userMsg: ChatMessage = {
+        role: "user",
+        content: `Offer #${offersUsed + 1}${data.insulting ? " (PLAYER INSULTED. 2 OFFERS USED)" : ""}: ${years.length} ${label} — ${details}`,
+        offer: { years, amounts },
       };
+      setChat((prev) => [...prev, userMsg, { role: "player", content: data.reply }]);
+      setOffersUsed(data.offersUsed);
 
-      setChat((prev) => [...prev, userMsg, ultimatumMsg]);
-    } else {
-      setChat((prev) => [...prev, userMsg, playerResponse.message]);
-
-      if (playerResponse.accepted) {
+      if (data.accepted) {
         setNegotiationDone(true);
         setAgreementReached(true);
-        setFinalOffer({ years: selectedYears, amounts });
+        setFinalOffer(data.final);
         setShowCopyPopup(true);
-        saveExtension(selectedPlayer, selectedYears, amounts, true);
+        fetchExtensions();
+      } else if (data.demand) {
+        setFinalDemandAmount(data.demand.amount);
+        setIsFinalDemand(true);
       }
-    }
-
-    setOffersUsed(newOffersUsedTotal);
-  }
-
-  function handleFinalDecision(accepted: boolean) {
-    if (!selectedPlayer) return;
-    setIsFinalDemand(false);
-
-    if (accepted) {
-      const amounts: { [year: number]: number } = {};
-      selectedYears.forEach((y) => (amounts[y] = finalDemandAmount));
-      setFinalOffer({ years: selectedYears, amounts });
-      setNegotiationDone(true);
-      setAgreementReached(true);
-      setShowCopyPopup(true);
-      setChat((prev) => [
-        ...prev,
-        { role: "player", content: "Smart move. I'll see you at training camp." },
-      ]);
-      saveExtension(selectedPlayer, selectedYears, amounts, true);
-    } else {
-      setNegotiationDone(true);
-      setAgreementReached(false);
-      setChat((prev) => [
-        ...prev,
-        {
-          role: "player",
-          content: "This is the kinda mistake that gets you fired. Don't call me again.",
-        },
-      ]);
-      // Declined ultimatum — lock the player so they can't renegotiate
-      const declinedAmounts: { [year: number]: number } = {};
-      selectedYears.forEach((y) => (declinedAmounts[y] = 0));
-      saveExtension(selectedPlayer, selectedYears, declinedAmounts, false);
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  function generatePlayerResponse(
-    fairValue: number,
-    amounts: { [year: number]: number },
-    years: number[],
-    offerNum: number,
-    isSnappedToCap: boolean
-  ): { message: ChatMessage; accepted: boolean } {
-    const avgPerYear =
-      Object.values(amounts).reduce((s, v) => s + v, 0) / years.length;
-    const ratio = fairValue > 0 ? avgPerYear / fairValue : 1;
-
-    const remainingOffers = Math.max(0, 3 - offerNum);
-    const offerText =
-      remainingOffers === 1
-        ? "This is your last chance."
-        : `${remainingOffers} offers remaining`;
-
-    // When snapped to the cap the player's true value exceeds the max, so they
-    // demand the full cap. Accept only at (effectively) 100% of the capped FV.
-    // 0.999 absorbs floating-point drift across multi-year averaging.
-    const acceptThreshold = isSnappedToCap ? 0.999 : 0.95;
-
-    if (!isSnappedToCap && ratio >= 1.3) // "Hell yeah" is unreachable when snapped (slider == cap)
-      return {
-        message: {
-          role: "player",
-          content: "YOU SERIOUS?! Hell yeah! You got a deal!",
-        },
-        accepted: true,
-      };
-    if (ratio >= acceptThreshold)
-      return {
-        message: {
-          role: "player",
-          content: isSnappedToCap
-            ? "I appreciate you putting your faith in me. You're not gonna regret it."
-            : "Alright, that's a fair deal. Let's do it.",
-        },
-        accepted: true,
-      };
-
-    // Snapped players skip the progressive bands — anything under max gets the
-    // same dismissive response and a restated max demand.
-    if (isSnappedToCap) {
-      return {
-        message: {
-          role: "player",
-          content: `You're not actually trying to negotiate right? Put down the max and let's get to work. (${offerText})`,
-        },
-        accepted: false,
-      };
+  async function handleFinalDecision(accepted: boolean) {
+    if (!selectedPlayer || submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/extensions/negotiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player_id: selectedPlayer.id, action: accepted ? "accept" : "decline" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setValidationError(data.error ?? "That didn't go through.");
+        return;
+      }
+      setIsFinalDemand(false);
+      setNegotiationDone(true);
+      setAgreementReached(data.accepted);
+      setChat((prev) => [...prev, { role: "player", content: data.reply }]);
+      if (data.accepted) {
+        setFinalOffer(data.final);
+        setShowCopyPopup(true);
+      }
+      fetchExtensions();
+    } finally {
+      setSubmitting(false);
     }
-
-    let responseContent = "";
-    if (ratio >= 0.9)
-      responseContent = `This is pretty fair. Give me a small bump and you've got a deal. (${offerText})`;
-    else if (ratio >= 0.85)
-    responseContent = `I love the city, but business is business. I’m gonna need a little more. (${offerText})`;
-    else if (ratio >= 0.8)
-      responseContent = `This is a bit too low, but we're close. (${offerText})`;
-    else if (ratio >= 0.7)
-      responseContent = `I like playing here but I'm gonna need more. (${offerText})`;
-    else if (ratio >= 0.6)
-      responseContent = `This is a low-ball offer, I know what I'm worth. (${offerText})`;
-    else if (ratio >= 0.5)
-      responseContent = `You're crazy man. Let me tell you, this is disrespectful. (${offerText})`;
-    else if (ratio >= 0.45)
-      responseContent = `Try again with a real offer. Or don't, I'll go somewhere I'm respected. (${offerText})`;
-    else if (ratio >= 0.4)
-      responseContent = `Is this a joke? I feel like I'm being pranked right now. Check the stats and try again. (${offerText})`;
-    else
-      // For anything < 0.4, since they lose 2 attempts, the message should sound severe
-      responseContent = `Is this a joke? Man, stop wasting my time or I'll walk out of here RIGHT NOW. (${offerText})`;
-
-    return {
-      message: { role: "player", content: responseContent },
-      accepted: false,
-    };
   }
 
   function getCopyText(): string {
@@ -458,9 +291,8 @@ export default function ExtensionsPage() {
       </div>
     );
 
-  const YOUNG_MAX_SALARY = 60_000_000; // $60M max for players 23 and under
   const isYoungPlayer = playerStats != null && playerStats.age <= 23;
-  const sliderMax = isYoungPlayer ? YOUNG_MAX_SALARY : 80_000_000;
+  const sliderMax = isYoungPlayer ? YOUNG_MAX_SALARY : MAX_SALARY;
   const canNegotiate = !!playerStats && !statsError && !statsLoading;
 
   const myExtensions = extensions
@@ -648,7 +480,7 @@ export default function ExtensionsPage() {
                   )}
                   <button
                     onClick={submitOffer}
-                    disabled={selectedYears.length === 0}
+                    disabled={selectedYears.length === 0 || submitting}
                     className="w-full py-2.5 bg-primary text-white rounded-sm font-medium disabled:opacity-40"
                   >
                     Submit Offer ({Math.min(offersUsed + 1, 3)}/3)
@@ -661,18 +493,16 @@ export default function ExtensionsPage() {
                   <p className={`font-bold mb-2 ${agreementReached ? "text-cap-under" : "text-cap-over"}`}>
                     {agreementReached ? "Agreement Reached!" : "Negotiations Failed"}
                   </p>
-                  <button
-                    onClick={() =>
-                      agreementReached ? setShowCopyPopup(true) : startNegotiation(selectedPlayer)
-                    }
-                    className={`px-4 py-2 rounded-sm text-sm font-medium ${
-                      agreementReached
-                        ? "bg-cap-under text-white"
-                        : "bg-surface-light border border-border text-text-muted"
-                    }`}
-                  >
-                    {agreementReached ? "View Details" : "Try Again"}
-                  </button>
+                  {agreementReached ? (
+                    <button
+                      onClick={() => setShowCopyPopup(true)}
+                      className="px-4 py-2 rounded-sm text-sm font-medium bg-cap-under text-white"
+                    >
+                      View Details
+                    </button>
+                  ) : (
+                    <p className="text-sm text-text-muted">He won&apos;t negotiate again. He plays out his deal.</p>
+                  )}
                 </div>
               )}
             </div>

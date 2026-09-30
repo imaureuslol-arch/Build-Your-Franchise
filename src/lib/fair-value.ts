@@ -2,9 +2,15 @@
  * Shared fair-value math. Both /api/player-values and /api/player-stats
  * call into this so the formula can only live in one place.
  *
- * Age-tier salary caps (60M ≤23, 80M otherwise) are NOT applied here —
- * they belong to the extensions negotiation UI, not the raw value.
+ * Age-tier salary caps (60M ≤23, 80M otherwise) and the league minimum are
+ * NOT applied here — they belong to the extension asking price.
  */
+
+// Softening applied 2026-09-30: the star bonus and the games-played penalty
+// are each 10% smaller than the original curve.
+const STAR_BONUS_SCALE = 0.9;
+const GAMES_PENALTY_SCALE = 0.9;
+
 export function calcFairValue(
   age: number,
   ppg: number,
@@ -20,7 +26,9 @@ export function calcFairValue(
     (0.2 + 0.8 * (1 - Math.exp(-0.15 * ppg))) *
     1.061616;
 
-  const gamesFactor = 1 / (1 + Math.exp(-0.15 * (avgGamesPlayed - 45)));
+  const gamesCurve = 1 / (1 + Math.exp(-0.15 * (avgGamesPlayed - 45)));
+  // Keep the curve's shape but take 10% off how much it can cost a player.
+  const gamesFactor = 1 - GAMES_PENALTY_SCALE * (1 - gamesCurve);
 
   const ageBase =
     1 +
@@ -30,7 +38,7 @@ export function calcFairValue(
 
   const ageDecline = age > 31 ? 0.9 ** (age - 31) : 1;
 
-  const bonusTerm = 1 + 0.25 / (0.4 + Math.exp(-1 * (ppg - 30)));
+  const bonusTerm = 1 + (STAR_BONUS_SCALE * 0.25) / (0.4 + Math.exp(-1 * (ppg - 30)));
 
   return (
     ppgTerm * ppgFactor * gamesFactor * ageFactor * ageDecline * bonusTerm * 0.6

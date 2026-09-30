@@ -26,7 +26,9 @@ export async function POST(request: NextRequest) {
     update players set
       ppg       = case when ${ppg !== undefined} then ${ppg ?? null}::real else ppg end,
       avg_gp    = case when ${avg_gp !== undefined} then ${avg_gp ?? null}::real else avg_gp end,
-      birthdate = case when ${birthdate !== undefined} then ${birthdate ?? null}::date else birthdate end
+      birthdate = case when ${birthdate !== undefined} then ${birthdate ?? null}::date else birthdate end,
+      -- Hand-entered stats survive the nightly sync while Sleeper has nothing for him.
+      stats_manual = stats_manual or ${ppg !== undefined || avg_gp !== undefined}
     where id = ${playerId}`;
   await audit(viewer, "player_stats_updated", { playerId, ppg, avg_gp, birthdate });
 

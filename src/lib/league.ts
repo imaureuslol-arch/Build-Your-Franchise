@@ -1,9 +1,9 @@
 import { sql } from "./db";
-import { DEAD_CAP_NAME, FREE_AGENCY_TEAM, SALARY_YEARS, type Player, type TeamOwner } from "./types";
+import { DEAD_CAP_NAME, FREE_AGENCY_TEAM, getSalaryYears, type Player, type TeamOwner } from "./types";
 
 /**
  * Every player (rostered and free agents) with contracts flattened to
- * contract_27..contract_30, plus the teams. Dead cap is folded into one
+ * salaries for the current season window, plus the teams. Dead cap is folded into one
  * "Dead Cap" row per team with id = -team_id, which is the shape the pages
  * and validateTrade expect.
  */
@@ -19,11 +19,11 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
     sql`select name, owner_name, conference from teams order by name`,
   ]);
 
-  const key = (season: number) => `contract_${String(season).slice(2)}` as keyof Player;
-  const inRange = (season: number) => (SALARY_YEARS as readonly number[]).includes(season);
+  const years = getSalaryYears();
+  const inRange = (season: number) => years.includes(season);
   const blank = (id: number, name: string, team: string): Player => ({
     id, name, team,
-    contract_27: null, contract_28: null, contract_29: null, contract_30: null,
+    salaries: {},
     ppg: null, avg_gp: null,
   });
 
@@ -33,14 +33,14 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
   }
   for (const c of contracts) {
     const p = byId.get(c.player_id);
-    if (p && inRange(c.season)) (p[key(c.season)] as number | null) = Number(c.amount);
+    if (p && inRange(c.season)) p.salaries[c.season] = Number(c.amount);
   }
 
   const deadRows = new Map<string, Player>();
   for (const d of deadCap) {
     if (!deadRows.has(d.team)) deadRows.set(d.team, blank(-d.team_id, DEAD_CAP_NAME, d.team));
     if (inRange(d.season) && Number(d.amount) !== 0) {
-      (deadRows.get(d.team)![key(d.season)] as number | null) = Number(d.amount);
+      deadRows.get(d.team)!.salaries[d.season] = Number(d.amount);
     }
   }
 

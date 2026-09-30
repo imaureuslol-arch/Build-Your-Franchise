@@ -2,10 +2,8 @@ export interface Player {
   id: number;
   name: string;
   team: string;
-  contract_27: number | null;
-  contract_28: number | null;
-  contract_29: number | null;
-  contract_30: number | null;
+  /** Salary by season (keyed by the year the season ends), within SALARY_YEARS. */
+  salaries: Record<number, number>;
   ppg: number | null;
   avg_gp: number | null;
 }
@@ -44,8 +42,21 @@ export interface ChatMessage {
   offer?: ExtensionOffer;
 }
 
-export const SALARY_YEARS = [2027, 2028, 2029, 2030] as const;
-export type SalaryYear = (typeof SALARY_YEARS)[number];
+/** Contracts, extensions and bids cover this many seasons, starting with the current one. */
+export const SEASON_WINDOW = 4;
+
+/** The seasons contracts can cover right now: the current one and the next three. */
+export function getSalaryYears(): number[] {
+  const start = getCurrentSeasonYear();
+  return Array.from({ length: SEASON_WINDOW }, (_, i) => start + i);
+}
+
+/**
+ * Snapshot of getSalaryYears() taken when the module loads. It moves on by
+ * itself every April 1; a page or server instance that was loaded before the
+ * rollover catches up on its next load.
+ */
+export const SALARY_YEARS: readonly number[] = getSalaryYears();
 
 // From the league's Salary Cap sheet (2026-27 season).
 export const HARD_CAP_BASE = 240_000_000;
@@ -53,6 +64,23 @@ export const SOFT_CAP_BASE = 215_000_000;
 const CAP_BASE_YEAR = 2027;
 const CAP_INCREASE_PER_YEAR = 25_000_000 / 3;
 const FAIR_VALUE_GROWTH_RATE = 0.05; // 5% per year
+// League minimums from the Salary Cap sheet: $4,166,667 vet / $2,166,667
+// rookie in 2026-27, each rising $166,667 a season.
+const VET_MIN_BASE = 25_000_000 / 6;
+const ROOKIE_MIN_BASE = 13_000_000 / 6;
+const MIN_INCREASE_PER_YEAR = 1_000_000 / 6;
+
+/** Veteran minimum salary for a season. */
+export function getVetMin(year?: number): number {
+  const y = year ?? getCurrentSeasonYear();
+  return Math.round(VET_MIN_BASE + Math.max(0, y - CAP_BASE_YEAR) * MIN_INCREASE_PER_YEAR);
+}
+
+/** Rookie minimum salary for a season. */
+export function getRookieMin(year?: number): number {
+  const y = year ?? getCurrentSeasonYear();
+  return Math.round(ROOKIE_MIN_BASE + Math.max(0, y - CAP_BASE_YEAR) * MIN_INCREASE_PER_YEAR);
+}
 
 /** Hard cap for a given season year ($240M in 2027, +$8.33M/yr) */
 export function getHardCap(year?: number): number {
@@ -83,19 +111,9 @@ export function getCurrentSeasonYear(): number {
   return month >= 3 ? year + 1 : year;
 }
 
-type ContractKey = "contract_27" | "contract_28" | "contract_29" | "contract_30";
-
-const YEAR_TO_CONTRACT: Record<number, ContractKey> = {
-  2027: "contract_27",
-  2028: "contract_28",
-  2029: "contract_29",
-  2030: "contract_30",
-};
-
 /** Get a player's salary for a specific year */
 export function getPlayerSalary(player: Player, year: number): number | null {
-  const key = YEAR_TO_CONTRACT[year];
-  return key ? player[key] : null;
+  return player.salaries[year] ?? null;
 }
 
 /** Get a player's salary for the current season year */
@@ -132,26 +150,20 @@ export function formatSalary(amount: number | null): string {
 
 export function isEligibleForExtension(player: Player): boolean {
   if (isDeadCap(player)) return false;
-  const currentYear = getCurrentSeasonYear();
-  for (let i = 0; i < SALARY_YEARS.length - 1; i++) {
-    const year = SALARY_YEARS[i];
-    const nextYear = SALARY_YEARS[i + 1];
-    if (year < currentYear) continue;
-    if (getPlayerSalary(player, year) != null && getPlayerSalary(player, nextYear) == null) {
-      return true;
-    }
-  }
-  return false;
+  return getExtensionYears(player).length > 0 && getCurrentSalary(player) != null;
 }
 
+/**
+ * Seasons an extension can add: those after the player's contract ends,
+ * up to the end of the window. Empty if his deal already runs to the end.
+ */
 export function getExtensionYears(player: Player): number[] {
-  const currentYear = getCurrentSeasonYear();
+  const years = getSalaryYears();
   let lastContractYear = 0;
-  for (const year of SALARY_YEARS) {
-    if (year < currentYear) continue;
+  for (const year of years) {
     if (getPlayerSalary(player, year) != null) lastContractYear = year;
   }
-  return SALARY_YEARS.filter((y) => y > lastContractYear);
+  return lastContractYear ? years.filter((y) => y > lastContractYear) : [];
 }
 
 export function validateTrade(
