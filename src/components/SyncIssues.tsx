@@ -13,7 +13,7 @@ interface Issue {
 const LABELS: Record<string, string> = {
   no_contract: "On a Sleeper roster, no contract",
   not_on_sleeper_roster: "Has a contract, not on any Sleeper roster",
-  wrong_team: "On a different team in Sleeper",
+  wrong_team: "Different team than in Sleeper — make the trade in Sleeper",
 };
 
 /** Commissioner panel: run the Sleeper sync and list what doesn't line up. */
@@ -75,8 +75,14 @@ export default function SyncIssues() {
                   .filter((i) => i.kind === k)
                   .map((i) => (
                     <li key={i.id} className="px-4 py-2 text-sm flex justify-between gap-2">
-                      <span>{i.player}</span>
-                      <span className="text-xs text-text-dim">{i.team}</span>
+                      {i.kind === "wrong_team" ? (
+                        <span>{i.detail}</span>
+                      ) : (
+                        <>
+                          <span>{i.player}</span>
+                          <span className="text-xs text-text-dim">{i.team}</span>
+                        </>
+                      )}
                     </li>
                   ))}
               </ul>

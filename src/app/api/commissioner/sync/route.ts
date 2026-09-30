@@ -1,13 +1,19 @@
 import { sql } from "@/lib/db";
 import { audit, forbidden, getViewer, isAnyCommish } from "@/lib/auth";
-import { syncFromSleeper } from "@/lib/sleeper-sync";
+import { checkRosters, syncFromSleeper } from "@/lib/sleeper-sync";
 import { syncStats } from "@/lib/stats-sync";
 import { refreshFairValues } from "@/lib/valuation";
 import { getCurrentSeasonYear } from "@/lib/types";
 
-/** GET — open roster issues from the last sync. Either commish tier. */
+/**
+ * GET — roster issues, re-checked against Sleeper on every call so the list
+ * is never stale. Either commish tier. If Sleeper is unreachable the last
+ * stored list is returned.
+ */
 export async function GET() {
   if (!isAnyCommish(await getViewer())) return forbidden();
+  const leagueId = process.env.SLEEPER_LEAGUE_ID;
+  if (leagueId) await checkRosters(leagueId).catch(() => {});
   const issues = await sql`
     select i.id, i.kind, i.detail, i.created_at, p.name as player, t.name as team
     from sync_issues i

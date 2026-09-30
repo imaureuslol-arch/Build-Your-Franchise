@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { audit, forbidden, getViewer, isAnyCommish, notLoggedIn } from "@/lib/auth";
 import { executeTrade } from "@/lib/trades";
+import { checkRosters } from "@/lib/sleeper-sync";
 
 type Action = "accept" | "decline" | "cancel" | "approve" | "reject";
 
@@ -45,6 +46,8 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/trades/
       if (trade.status !== "accepted" || !isAnyCommish(viewer)) return forbidden();
       const errors = await executeTrade(id);
       if (errors.length) return Response.json({ errors }, { status: 422 });
+      // The book now differs from Sleeper until the trade is made there too.
+      if (process.env.SLEEPER_LEAGUE_ID) await checkRosters(process.env.SLEEPER_LEAGUE_ID).catch(() => {});
       break;
     }
     case "reject":

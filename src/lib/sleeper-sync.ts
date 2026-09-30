@@ -97,7 +97,35 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
   const playersAdded = inserted.filter((r) => r.inserted).length;
 
   // New pickups with no contract join their Sleeper team straight away;
-  // anything already in the book is only flagged.
+  // anything already in the book is only flagged (by checkRosters below).
+  await sql`
+    update players p set team_id = r.team_id
+    from unnest(${[...rostered.keys()]}::text[], ${[...rostered.values()]}::int[]) as r(sleeper_id, team_id)
+    where p.sleeper_id = r.sleeper_id and p.team_id is null
+      and not exists (select 1 from contracts c where c.player_id = p.id)`;
+
+  const issues = await checkRosters(leagueId, rosters);
+  return { teamsUpdated, playersAdded, issues };
+}
+
+/**
+ * Compare Sleeper's rosters with the book and rewrite sync_issues. Cheap (one
+ * small Sleeper call), so it also runs after every approved trade and each
+ * time the commissioner opens the list. Returns the number of issues.
+ */
+export async function checkRosters(leagueId: string, rosters?: SleeperRoster[]): Promise<number> {
+  const live = rosters ?? (await get<SleeperRoster[]>(`/league/${leagueId}/rosters`));
+  const teams = await sql`select id, sleeper_roster, name from teams`;
+  const teamByRoster = new Map(teams.map((t) => [t.sleeper_roster as number, t]));
+  const teamName = new Map(teams.map((t) => [t.id as number, t.name as string]));
+
+  const rostered = new Map<string, number>(); // sleeper_id -> team id
+  for (const r of live) {
+    const team = teamByRoster.get(r.roster_id);
+    if (!team) continue;
+    for (const pid of r.players ?? []) rostered.set(pid, team.id);
+  }
+
   const book = await sql`
     select p.id, p.sleeper_id, p.name, p.team_id,
            exists (select 1 from contracts c where c.player_id = p.id) as has_contract
@@ -106,10 +134,6 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
   const issues: { kind: string; player_id: number; team_id: number | null; detail: string }[] = [];
   for (const p of book) {
     const sleeperTeam = p.sleeper_id ? rostered.get(p.sleeper_id) : undefined;
-    if (sleeperTeam != null && p.team_id == null && !p.has_contract) {
-      await sql`update players set team_id = ${sleeperTeam} where id = ${p.id}`;
-      p.team_id = sleeperTeam;
-    }
     if (sleeperTeam != null && !p.has_contract) {
       issues.push({ kind: "no_contract", player_id: p.id, team_id: sleeperTeam, detail: `${p.name} is on a Sleeper roster with no contract` });
     }
@@ -117,7 +141,12 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
       issues.push({ kind: "not_on_sleeper_roster", player_id: p.id, team_id: p.team_id, detail: `${p.name} has a contract but is on no Sleeper roster` });
     }
     if (sleeperTeam != null && p.team_id != null && sleeperTeam !== p.team_id) {
-      issues.push({ kind: "wrong_team", player_id: p.id, team_id: sleeperTeam, detail: `${p.name} is on a different team in Sleeper` });
+      issues.push({
+        kind: "wrong_team",
+        player_id: p.id,
+        team_id: p.team_id,
+        detail: `${p.name}: ${teamName.get(p.team_id)} here, ${teamName.get(sleeperTeam)} in Sleeper`,
+      });
     }
   }
 
@@ -127,6 +156,5 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
         select * from unnest(${issues.map((i) => i.kind)}::text[], ${issues.map((i) => i.player_id)}::int[],
                              ${issues.map((i) => i.team_id)}::int[], ${issues.map((i) => i.detail)}::text[])`,
   ]);
-
-  return { teamsUpdated, playersAdded, issues: issues.length };
+  return issues.length;
 }
