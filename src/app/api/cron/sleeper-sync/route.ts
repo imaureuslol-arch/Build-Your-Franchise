@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { audit } from "@/lib/auth";
 import { syncFromSleeper } from "@/lib/sleeper-sync";
 import { syncStats } from "@/lib/stats-sync";
+import { refreshFairValues } from "@/lib/valuation";
+import { getCurrentSeasonYear } from "@/lib/types";
 
 /**
  * Daily Sleeper sync, called by Vercel Cron (see vercel.json). Vercel sends
@@ -17,7 +19,8 @@ export async function GET(request: NextRequest) {
 
   const rosters = await syncFromSleeper(leagueId);
   const stats = await syncStats(leagueId);
-  const result = { ...rosters, statsUpdated: stats.updated, statsSeason: stats.season };
+  const valued = await refreshFairValues(getCurrentSeasonYear());
+  const result = { ...rosters, statsUpdated: stats.updated, statsSeason: stats.season, valued };
   await audit(null, "sleeper_sync", { ...result, fromCron: true });
   return Response.json(result);
 }

@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { audit, getViewer, notLoggedIn, type Viewer } from "@/lib/auth";
-import { ageFromBirthdate, calcFairValue } from "@/lib/fair-value";
 import {
   MAX_OFFERS,
   askingPrice,
@@ -37,7 +36,8 @@ type Loaded =
 async function load(viewer: Viewer, playerId: number): Promise<Loaded> {
   if (viewer.teamId == null) return { error: "Log in with your team link to negotiate.", status: 403 };
   const [row] = await sql`
-    select id, name, team_id, ppg, avg_gp, birthdate::text as birthdate
+    select id, name, team_id, ppg, avg_gp, fair_value,
+           date_part('year', age(birthdate))::int as age
     from players where id = ${playerId}`;
   if (!row || row.team_id !== viewer.teamId) return { error: "That player isn't on your team.", status: 403 };
 
@@ -53,9 +53,9 @@ async function load(viewer: Viewer, playerId: number): Promise<Loaded> {
   const years = getExtensionYears(player);
   if (years.length === 0) return { error: "His contract already runs to the end of the window.", status: 400 };
 
-  const age = row.birthdate ? ageFromBirthdate(row.birthdate) : null;
-  if (row.ppg == null || row.avg_gp == null || age == null) {
-    return { error: "Stats missing for this player — contact the commissioner to update.", status: 409 };
+  const age: number | null = row.age;
+  if (row.fair_value == null || age == null) {
+    return { error: "No value for this player yet — contact the commissioner to update.", status: 409 };
   }
 
   const [state] = await sql`
@@ -66,7 +66,7 @@ async function load(viewer: Viewer, playerId: number): Promise<Loaded> {
     player,
     years,
     age,
-    fairValue: calcFairValue(age, row.ppg, row.avg_gp),
+    fairValue: row.fair_value,
     state: (state as Extract<Loaded, { player: Player }>["state"]) ?? null,
   };
 }

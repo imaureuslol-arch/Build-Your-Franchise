@@ -11,7 +11,7 @@ import SyncIssues from "@/components/SyncIssues";
 import ContractManager from "@/components/ContractManager";
 
 interface PlayerValues {
-  [id: number]: { fairValue: number; age: number };
+  [id: number]: { fairValue: number; age: number; gpOverride: number | null };
 }
 
 export default function CommissionerPage() {
@@ -31,13 +31,18 @@ export default function CommissionerPage() {
   const [editAge, setEditAge] = useState("");
   const [editGp, setEditGp] = useState("");
   const [editFppg, setEditFppg] = useState("");
+  const [editHealth, setEditHealth] = useState("");
+  const [scoring, setScoring] = useState<Record<string, number> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/player-values")
       .then((r) => r.json())
-      .then((d) => setValues(d.values ?? {}))
+      .then((d) => {
+        setValues(d.values ?? {});
+        setScoring(d.scoring ?? null);
+      })
       .catch(() => {})
       .finally(() => setValuesLoading(false));
   }, []);
@@ -87,6 +92,7 @@ export default function CommissionerPage() {
     setEditFg3m("");
     setEditFppg("");
     setEditGp(p.avg_gp != null ? String(p.avg_gp) : "");
+    setEditHealth(v?.gpOverride != null ? String(v.gpOverride) : "");
     setEditAge(v?.age != null ? String(v.age) : "");
   }
 
@@ -99,7 +105,7 @@ export default function CommissionerPage() {
     return `${y}-${m}-${d}`;
   }
 
-  // Same formula as scripts/populate-stats.mjs
+  // The league's own Sleeper scoring, so a typed-in line scores like a real one.
   function calcFantasyPpg(): number | null {
     const pts = parseFloat(editPts);
     const reb = parseFloat(editReb);
@@ -108,8 +114,9 @@ export default function CommissionerPage() {
     const blk = parseFloat(editBlk);
     const tov = parseFloat(editTov);
     const fg3m = parseFloat(editFg3m);
-    if ([pts, reb, ast, stl, blk, tov, fg3m].some((v) => isNaN(v))) return null;
-    const raw = pts * 0.6 + reb * 0.9 + ast * 1 + stl * 2 + blk * 2.5 + fg3m * 0.5 - tov * 1;
+    if (!scoring || [pts, reb, ast, stl, blk, tov, fg3m].some((v) => isNaN(v))) return null;
+    const w = (k: string) => scoring[k] ?? 0;
+    const raw = pts * w("pts") + reb * w("reb") + ast * w("ast") + stl * w("stl") + blk * w("blk") + fg3m * w("tpm") + tov * w("to");
     return Math.round(raw * 10) / 10;
   }
 
@@ -125,10 +132,13 @@ export default function CommissionerPage() {
     setSaving(true);
     setSaveMsg(null);
 
-    const ppg = effectiveFppg;
-    const avg_gp = editGp.trim() ? parseFloat(editGp) : null;
+    // Only send what was filled in, so saving a health override or an age
+    // doesn't wipe the player's stats.
+    const ppg = effectiveFppg ?? undefined;
+    const avg_gp = editGp.trim() ? parseFloat(editGp) : undefined;
     const age = editAge.trim() ? parseInt(editAge, 10) : null;
     const birthdate = age != null ? birthdateFromAge(age) : undefined;
+    const gp_override = editHealth.trim() ? parseFloat(editHealth) : null;
 
     try {
       const res = await fetch("/api/commissioner/update-player", {
@@ -139,13 +149,14 @@ export default function CommissionerPage() {
           ppg,
           avg_gp,
           birthdate,
+          gp_override,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Update failed");
       setSaveMsg({ type: "ok", text: "Player updated successfully." });
 
-      // Refresh values
+      // Refresh values (the server recomputed every fair value after the save)
       const vRes = await fetch("/api/player-values");
       const vData = await vRes.json();
       if (vRes.ok) setValues(vData.values ?? {});
@@ -301,7 +312,7 @@ export default function CommissionerPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
               <div>
                 <label className="block text-xs text-text-dim mb-1">Age</label>
                 <input
@@ -320,6 +331,19 @@ export default function CommissionerPage() {
                   value={editGp}
                   onChange={(e) => setEditGp(e.target.value)}
                   placeholder="e.g. 72"
+                  className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-text-dim mb-1" title="Games per season you expect from now on. Replaces his games-played history in fair value; leave empty to use the history.">
+                  Health override (GP/season)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  value={editHealth}
+                  onChange={(e) => setEditHealth(e.target.value)}
+                  placeholder="empty = use history"
                   className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
                 />
               </div>

@@ -2,6 +2,8 @@ import { sql } from "@/lib/db";
 import { audit, forbidden, getViewer, isAnyCommish } from "@/lib/auth";
 import { syncFromSleeper } from "@/lib/sleeper-sync";
 import { syncStats } from "@/lib/stats-sync";
+import { refreshFairValues } from "@/lib/valuation";
+import { getCurrentSeasonYear } from "@/lib/types";
 
 /** GET — open roster issues from the last sync. Either commish tier. */
 export async function GET() {
@@ -25,7 +27,8 @@ export async function POST() {
 
   const rosters = await syncFromSleeper(leagueId);
   const stats = await syncStats(leagueId);
-  const result = { ...rosters, statsUpdated: stats.updated, statsSeason: stats.season };
+  const valued = await refreshFairValues(getCurrentSeasonYear());
+  const result = { ...rosters, statsUpdated: stats.updated, statsSeason: stats.season, valued };
   await audit(viewer, "sleeper_sync", result);
   return Response.json(result);
 }

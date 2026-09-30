@@ -87,9 +87,11 @@ export async function syncStats(leagueId: string): Promise<{ updated: number; cl
   const currentStart = getCurrentSeasonYear() - 1;
   const completedStarts = [currentStart - 1, currentStart - 2, currentStart - 3];
 
-  const [league, catalogue, current, ...completed] = await Promise.all([
+  const [league, catalogue, projections, current, ...completed] = await Promise.all([
     get<{ scoring_settings: Record<string, number> }>(`/league/${leagueId}`),
     get<Record<string, { years_exp?: number | null }>>(`/players/nba`),
+    // Per-game projections for the season in progress, with dynasty ADP.
+    get<Season>(`/projections/nba/regular/${currentStart}`).catch(() => ({}) as Season),
     get<Season>(`/stats/nba/regular/${currentStart}`).catch(() => ({}) as Season),
     ...completedStarts.map((y) => get<Season>(`/stats/nba/regular/${y}`)),
   ]);
@@ -144,6 +146,21 @@ export async function syncStats(leagueId: string): Promise<{ updated: number; cl
   await sql`
     update players p set ppg = s.ppg, avg_gp = s.gp
     from unnest(${ids}::int[], ${ppgs}::real[], ${gps}::real[]) as s(id, ppg, gp)
+    where p.id = s.id`;
+
+  // Projection and market inputs for fair value. Blank when Sleeper has none.
+  const projIds: number[] = [];
+  const projFppg: (number | null)[] = [];
+  const adp: (number | null)[] = [];
+  for (const p of players) {
+    const pr = projections[p.sleeper_id];
+    projIds.push(p.id);
+    projFppg.push(pr?.pts != null ? Math.round(fantasyPoints(pr, scoring) * 10) / 10 : null);
+    adp.push(pr?.adp_dynasty ?? null);
+  }
+  await sql`
+    update players p set proj_fppg = s.proj, adp_dynasty = s.adp
+    from unnest(${projIds}::int[], ${projFppg}::real[], ${adp}::real[]) as s(id, proj, adp)
     where p.id = s.id`;
 
   const last = completedStarts[0];
