@@ -1,24 +1,62 @@
 @import "tailwindcss";
 
+/*
+ * Box-score look: newsprint paper, black ink, one court-orange accent.
+ * Tokens are CSS variables so dark mode is a variable swap, not a second
+ * set of classes. Numbers use the mono face so salary columns line up.
+ */
+:root {
+  --paper: #f3efe6;
+  --sheet: #fbf9f4;
+  --sheet-2: #ebe5d8;
+  --rule: #d3cbbb;
+  --ink: #17150f;
+  --ink-2: #57513f;
+  --ink-3: #8b8472;
+  --orange: #c4491a;
+  --orange-2: #a63c14;
+  --good: #2c7a4b;
+  --warn: #a86b12;
+  --bad: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #13110e;
+    --sheet: #1b1915;
+    --sheet-2: #25221d;
+    --rule: #37322a;
+    --ink: #ede7da;
+    --ink-2: #aaa290;
+    --ink-3: #726b5c;
+    --orange: #e0692f;
+    --orange-2: #f07b41;
+    --good: #4fae74;
+    --warn: #d9a03a;
+    --bad: #e2574c;
+  }
+}
+
 @theme inline {
-  --color-background: #0c0c0c;
-  --color-surface: #181818;
-  --color-surface-light: #252525;
-  --color-border: #333333;
-  --color-primary: #606060;
-  --color-primary-hover: #707070;
-  --color-accent: #c0c0c0;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-  --color-text: #e4e4e4;
-  --color-text-muted: #848484;
-  --color-text-dim: #525252;
-  --color-cap-under: #10b981;
-  --color-cap-yellow: #f59e0b;
-  --color-cap-over: #ef4444;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--paper);
+  --color-surface: var(--sheet);
+  --color-surface-light: var(--sheet-2);
+  --color-border: var(--rule);
+  --color-primary: var(--orange);
+  --color-primary-hover: var(--orange-2);
+  --color-accent: var(--orange);
+  --color-warning: var(--warn);
+  --color-danger: var(--bad);
+  --color-text: var(--ink);
+  --color-text-muted: var(--ink-2);
+  --color-text-dim: var(--ink-3);
+  --color-cap-under: var(--good);
+  --color-cap-yellow: var(--warn);
+  --color-cap-over: var(--bad);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
   --font-blocky: var(--font-barlow-condensed);
+  --radius-sm: 2px;
 }
 
 html {
@@ -29,6 +67,24 @@ body {
   background: var(--color-background);
   color: var(--color-text);
   font-family: var(--font-sans);
+  font-feature-settings: "tnum";
+}
+
+/* Headings read like a stats page: condensed, upper case, tight. In the
+   base layer so a page's own text-* classes still win. */
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-blocky), var(--font-sans);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 1.05;
+  }
+  h1 {
+    font-size: 2.25rem;
+  }
 }
 
 /* Prevent iOS zoom on input focus */
@@ -40,39 +96,42 @@ body {
   }
 }
 
-select {
-  font-family: var(--font-blocky), var(--font-sans);
-  font-weight: 600;
-  letter-spacing: 0.02em;
+::selection {
+  background: var(--orange);
+  color: #fff;
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-background);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 3px;
+  background: var(--rule);
 }
 
-/* Slider styling */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-border);
+  height: 4px;
+  background: var(--rule);
   outline: none;
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--color-primary);
+  width: 14px;
+  height: 20px;
+  background: var(--ink);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 20px;
+  border: 0;
+  border-radius: 0;
+  background: var(--ink);
   cursor: pointer;
 }

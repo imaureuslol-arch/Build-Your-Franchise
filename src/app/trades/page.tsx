@@ -5,16 +5,11 @@ export const dynamic = "force-dynamic";
 import { Suspense, useState, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePlayers } from "@/lib/hooks";
-import {
-  Player,
-  TradeTeam,
-  ConfirmedTrade,
-  FREE_AGENCY_TEAM,
-  validateTrade,
-  getCurrentSalary,
-} from "@/lib/types";
+import { useUserTeam } from "@/lib/user-context";
+import { Player, FREE_AGENCY_TEAM, getCurrentSalary } from "@/lib/types";
 import TeamTradeColumn from "@/components/TeamTradeColumn";
 import TradeSidebar from "@/components/TradeSidebar";
+import TradeProposals, { type TradeView } from "@/components/TradeProposals";
 
 interface TradeSlot {
   team: string;
@@ -32,6 +27,8 @@ export default function TradesPageWrapper() {
 
 function TradesPage() {
   const { players: allPlayers, loading } = usePlayers();
+  const { teamName: myTeam, isWhitelisted, isSubCommish } = useUserTeam();
+  const isCommish = isWhitelisted || isSubCommish;
   const searchParams = useSearchParams();
   const [playerValues, setPlayerValues] = useState<Record<number, { fairValue: number; age: number }>>({});
   useEffect(() => {
@@ -48,18 +45,24 @@ function TradesPage() {
     valid: boolean;
     errors: string[];
   } | null>(null);
-  const [confirmedTrades, setConfirmedTrades] = useState<ConfirmedTrade[]>(() => {
-    if (typeof window === "undefined") return [];
-    const saved = localStorage.getItem("confirmedTrades");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [openTrades, setOpenTrades] = useState<TradeView[]>([]);
+  const [history, setHistory] = useState<TradeView[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const loadTrades = useCallback(async () => {
+    const res = await fetch("/api/trades");
+    if (!res.ok) return;
+    const data = await res.json();
+    setOpenTrades(data.open);
+    setHistory(data.history);
+  }, []);
+
+  useEffect(() => {
+    loadTrades();
+  }, [loadTrades]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [destinationMap, setDestinationMap] = useState<Record<string, string>>({});
-
-  // --- Password Protection State ---
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const ADMIN_PASSWORD = "stoplookinginthefilesasshole"; // Set your password here
 
   // Pre-populate from query params (roster search sends ?team=, trade finder sends ?team1=&team1out=&team2=&team2out=)
   useEffect(() => {
@@ -259,63 +262,63 @@ function TradesPage() {
       ? { text: "Slight Edge", color: "text-cap-yellow" }
       : { text: "Lopsided", color: "text-cap-over" };
 
-  function buildTradeTeams(): TradeTeam[] {
-    return slots
-      .filter((s) => s.team)
-      .map((slot) => ({
-        team: slot.team,
-        playersOut: slot.playersOut,
-        playersIn: getPlayersIn(slot.team),
-        retainedSalary: slot.retainedSalary,
-        incomingRetained: getIncomingRetained(slot.team),
-      }));
-  }
-
-  function handleValidate() {
-    setValidationResult(validateTrade(buildTradeTeams(), rostered));
-  }
-
-  function handleConfirm() {
-    const tradeTeams = buildTradeTeams();
-    const result = validateTrade(tradeTeams, rostered);
-    if (!result.valid) {
-      setValidationResult(result);
-      return;
-    }
-
-    const trade: ConfirmedTrade = {
-      id: crypto.randomUUID(),
-      teams: tradeTeams,
-      timestamp: Date.now(),
+  /** The trade as the server wants it: teams with retention, and who goes where. */
+  function buildTradeInput() {
+    const active = slots.filter((s) => s.team);
+    return {
+      teams: active.map((s) => ({ team: s.team, retained: s.retainedSalary })),
+      items: active.flatMap((s) =>
+        s.playersOut.map((p) => ({
+          playerId: p.id,
+          from: s.team,
+          to: destinationMap[`${s.team}:${p.name}`] ?? "",
+        }))
+      ),
     };
-
-    const updated = [trade, ...confirmedTrades];
-    setConfirmedTrades(updated);
-    localStorage.setItem("confirmedTrades", JSON.stringify(updated));
-    setSidebarOpen(true);
-
-    setSlots([{ team: "", playersOut: [], retainedSalary: 0 }, { team: "", playersOut: [], retainedSalary: 0 }]);
-    setDestinationMap({});
-    setValidationResult(null);
   }
+
+  async function handleValidate() {
+    const res = await fetch("/api/trades/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trade: buildTradeInput() }),
+    });
+    setValidationResult(await res.json());
+  }
+
+  async function submit(record: boolean) {
+    setSubmitting(true);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trade: buildTradeInput(), record }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setValidationResult({ valid: false, errors: data.errors ?? [data.error ?? "Something went wrong."] });
+        return;
+      }
+      handleReset();
+      setNotice(
+        record
+          ? "Trade recorded. Rosters are updated; make the same trade in Sleeper."
+          : "Trade proposed. The other teams can accept it below."
+      );
+      await loadTrades();
+      if (record) window.location.reload();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const inTrade = slots.some((s) => s.team && s.team === myTeam);
 
   function handleReset() {
     setSlots([{ team: "", playersOut: [], retainedSalary: 0 }, { team: "", playersOut: [], retainedSalary: 0 }]);
     setDestinationMap({});
     setValidationResult(null);
-  }
-
-  // --- Password Logic ---
-  function handleConfirmClearHistory() {
-    if (passwordInput === ADMIN_PASSWORD) {
-      setConfirmedTrades([]);
-      localStorage.removeItem("confirmedTrades");
-      setShowPasswordModal(false);
-      setPasswordInput("");
-      alert("Trade history cleared.");
-    } else {
-      alert("Incorrect Password");
-    }
   }
 
   if (loading) {
@@ -327,38 +330,29 @@ function TradesPage() {
   }
 
   return (
-    <div className="max-w-full mx-auto px-3 sm:px-4 py-6 sm:py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">Trade Machine</h1>
+        <h1 className="text-4xl">Trade Machine</h1>
         <div className="flex flex-wrap gap-2">
-          {/* Clear History Button */}
-          <button
-            onClick={() => setShowPasswordModal(true)}
-            className="px-4 py-2 bg-cap-over/10 text-cap-over border border-cap-over/30 rounded-lg text-sm hover:bg-cap-over/20 transition-colors"
-          >
-            Clear History
-          </button>
           <button
             onClick={() => setSidebarOpen(true)}
-            className="px-4 py-2 bg-surface text-text-muted border border-border rounded-lg text-sm hover:text-text transition-colors relative"
+            className="px-4 py-2 bg-surface text-text-muted border border-border rounded-sm text-sm hover:text-text transition-colors relative"
           >
             History
-            {confirmedTrades.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-primary text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                {confirmedTrades.length}
-              </span>
-            )}
+
           </button>
           {slots.length < 4 && (
             <button
               onClick={addTeam}
-              className="px-4 py-2 bg-surface-light text-text border border-border rounded-lg text-sm hover:bg-primary hover:text-white transition-colors"
+              className="px-4 py-2 bg-surface-light text-text border border-border rounded-sm text-sm hover:bg-primary hover:text-white transition-colors"
             >
               + Add Team
             </button>
           )}
         </div>
       </div>
+
+      <TradeProposals trades={openTrades} myTeam={myTeam} isCommish={isCommish} onChange={loadTrades} />
 
       <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 -mx-3 sm:mx-0 px-3 sm:px-0 snap-x snap-mandatory sm:snap-none">
         {slots.map((slot, i) => {
@@ -415,9 +409,9 @@ function TradesPage() {
         // the half-bar; stretches if anyone actually exceeds that.
         const scale = Math.max(150_000_000, maxAbsValue);
         return (
-          <div className="mt-6 w-full max-w-2xl mx-auto bg-surface border border-border rounded-xl overflow-hidden">
+          <div className="mt-6 w-full max-w-2xl mx-auto bg-surface border border-border rounded-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-text-muted">
+              <h3 className="text-xl text-text">
                 Trade Fairness
               </h3>
               <span className={`text-sm font-bold ${fairnessLabel.color}`}>
@@ -436,7 +430,7 @@ function TradesPage() {
                 return (
                   <div key={tv.team} className="px-4 py-2.5">
                     <div className="text-sm font-medium truncate mb-1">{tv.team}</div>
-                    <div className="relative h-2 bg-surface-light rounded-full overflow-hidden">
+                    <div className="relative h-2 bg-surface-light overflow-hidden">
                       <div className="absolute top-0 bottom-0 left-1/2 w-px bg-border/80" />
                       <div
                         className={`absolute top-0 bottom-0 ${
@@ -462,21 +456,39 @@ function TradesPage() {
 
       <div className="mt-6 flex flex-col items-center gap-4">
         <div className="flex flex-wrap justify-center gap-2 sm:gap-3 w-full">
-          <button onClick={handleValidate} className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors">
+          <button onClick={handleValidate} className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-primary text-white rounded-sm font-medium hover:bg-primary-hover transition-colors">
             Validate Trade
           </button>
-          <button onClick={handleConfirm} className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-cap-under text-white rounded-lg font-medium hover:opacity-90 transition-colors">
-            Confirm Trade
-          </button>
-          <button onClick={handleReset} className="flex-1 sm:flex-none min-w-[100px] px-4 sm:px-6 py-2.5 bg-surface-light text-text-muted border border-border rounded-lg font-medium hover:text-text transition-colors">
+          {myTeam && (
+            <button
+              onClick={() => submit(false)}
+              disabled={!inTrade || submitting}
+              title={inTrade ? undefined : "Your team has to be in the trade"}
+              className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-cap-under text-white rounded-sm font-medium hover:opacity-90 transition-colors disabled:opacity-40"
+            >
+              Propose Trade
+            </button>
+          )}
+          {isCommish && (
+            <button
+              onClick={() => confirm("Record this trade now? Rosters and cap change immediately.") && submit(true)}
+              disabled={submitting}
+              className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-surface-light text-text border border-border rounded-sm font-medium hover:text-text transition-colors disabled:opacity-40"
+            >
+              Record Trade
+            </button>
+          )}
+          <button onClick={handleReset} className="flex-1 sm:flex-none min-w-[100px] px-4 sm:px-6 py-2.5 bg-surface-light text-text-muted border border-border rounded-sm font-medium hover:text-text transition-colors">
             Reset
           </button>
         </div>
 
+        {notice && <p className="text-sm text-cap-under text-center">{notice}</p>}
+
         {validationResult && (
-          <div className={`w-full max-w-2xl rounded-lg border p-4 ${validationResult.valid ? "bg-cap-under/10 border-cap-under/30" : "bg-cap-over/10 border-cap-over/30"}`}>
+          <div className={`w-full max-w-2xl rounded-sm border p-4 ${validationResult.valid ? "bg-cap-under/10 border-cap-under/30" : "bg-cap-over/10 border-cap-over/30"}`}>
             {validationResult.valid ? (
-              <p className="text-cap-under font-medium text-center">Trade is valid! Click Confirm to save it.</p>
+              <p className="text-cap-under font-medium text-center">Trade works under the cap rules.</p>
             ) : (
               <div>
                 <p className="text-cap-over font-medium mb-2">Trade is invalid:</p>
@@ -491,43 +503,8 @@ function TradesPage() {
         )}
       </div>
 
-      <TradeSidebar trades={confirmedTrades} onClose={() => setSidebarOpen(false)} open={sidebarOpen} />
+      <TradeSidebar trades={history} onClose={() => setSidebarOpen(false)} open={sidebarOpen} />
 
-      {/* --- Password Modal --- */}
-      {showPasswordModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
-          <div className="bg-surface rounded-xl p-6 max-w-xs w-full border border-border shadow-2xl">
-            <h3 className="font-bold text-white mb-2">Admin Required</h3>
-            <p className="text-xs text-text-dim mb-4">Enter password to wipe all confirmed trade history.</p>
-            <input 
-              type="password"
-              autoFocus
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleConfirmClearHistory()}
-              className="w-full bg-surface-light border border-border rounded px-3 py-2 text-sm outline-none mb-4 text-white focus:ring-1 focus:ring-primary"
-              placeholder="Password"
-            />
-            <div className="flex gap-2">
-              <button 
-                onClick={handleConfirmClearHistory}
-                className="flex-1 py-2 bg-cap-over text-white rounded font-bold text-xs hover:opacity-90 transition-opacity"
-              >
-                Confirm Clear
-              </button>
-              <button 
-                onClick={() => {
-                  setShowPasswordModal(false);
-                  setPasswordInput("");
-                }}
-                className="flex-1 py-2 bg-surface-light text-text-muted rounded font-bold text-xs hover:text-text transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

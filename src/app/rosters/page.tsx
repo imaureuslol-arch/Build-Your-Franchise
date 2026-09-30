@@ -149,7 +149,7 @@ export default function RostersPage() {
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">Rosters</h1>
+        <h1 className="text-4xl">Rosters</h1>
         <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
           <div className="relative w-full sm:w-auto" ref={searchRef}>
             <input
@@ -161,12 +161,12 @@ export default function RostersPage() {
                 setShowPlayerResults(true);
               }}
               onFocus={() => setShowPlayerResults(true)}
-              className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64"
+              className="bg-surface border border-border rounded-sm px-3 py-1.5 text-sm placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64"
             />
             {/* Player search dropdown */}
             {showPlayerResults && playerSearchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-xl z-50 overflow-hidden">
-                <div className="px-3 py-1.5 text-xs text-text-dim border-b border-border font-semibold uppercase tracking-wider">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-sm shadow-xl z-50 overflow-hidden">
+                <div className="px-3 py-1.5 text-xs text-text-dim border-b border-border font-blocky text-sm font-bold uppercase">
                   Players — click to trade
                 </div>
                 {playerSearchResults.map((p) => (
@@ -186,7 +186,7 @@ export default function RostersPage() {
             <button
               key={conf}
               onClick={() => setConferenceFilter(conf)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-sm text-sm font-medium transition-colors ${
                 conferenceFilter === conf
                   ? "bg-primary text-white"
                   : "bg-surface text-text-muted hover:text-text"
@@ -200,13 +200,13 @@ export default function RostersPage() {
 
       <div className="flex flex-wrap gap-x-4 gap-y-2 mb-6 text-xs sm:text-sm">
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-cap-under" /> Under {formatSalary(getSoftCap())}
+          <span className="w-3 h-3 bg-cap-under" /> Under {formatSalary(getSoftCap())}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-cap-yellow" /> {formatSalary(getSoftCap())} - {formatSalary(getHardCap())}
+          <span className="w-3 h-3 bg-cap-yellow" /> {formatSalary(getSoftCap())} - {formatSalary(getHardCap())}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-cap-over" /> Over {formatSalary(getHardCap())}
+          <span className="w-3 h-3 bg-cap-over" /> Over {formatSalary(getHardCap())}
         </span>
       </div>
 
@@ -215,7 +215,7 @@ export default function RostersPage() {
         {filteredTeams.map((team) => (
           <div
             key={team.team}
-            className={`bg-surface rounded-xl border cursor-pointer transition-all hover:border-primary/50 ${
+            className={`bg-surface rounded-sm border cursor-pointer transition-all hover:border-primary/50 ${
               selectedTeam === team.team ? "border-primary ring-1 ring-primary/30" : "border-border"
             }`}
             onClick={() =>
@@ -226,7 +226,7 @@ export default function RostersPage() {
               <div className="flex items-center justify-between mb-1">
                 <h2 className="font-bold text-lg">{team.team}</h2>
                 <span
-                  className={`text-xs px-2 py-1 rounded-full border ${capStatusBg[team.capStatus]}`}
+                  className={`text-xs px-1.5 py-0.5 border font-mono ${capStatusBg[team.capStatus]}`}
                 >
                   <span className={capStatusColors[team.capStatus]}>
                     {capStatusLabel[team.capStatus]}
@@ -259,14 +259,14 @@ export default function RostersPage() {
               <>
               {/* Cap Projections */}
               <div className="border-t border-border px-4 py-3">
-                <h3 className="text-xs font-semibold text-text-dim uppercase tracking-wider mb-2">Cap Projections</h3>
+                <h3 className="text-lg text-text mb-2">Cap Projections</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {SALARY_YEARS.map((y) => {
                     const yCap = team.yearCaps[y];
                     const yStatus = getCapStatus(yCap, y);
                     const yDeadCap = team.yearDeadCaps[y];
                     return (
-                      <div key={y} className={`rounded-lg border p-2 text-center ${capStatusBg[yStatus]}`}>
+                      <div key={y} className={`rounded-sm border p-2 text-center ${capStatusBg[yStatus]}`}>
                         <div className="text-[10px] text-text-dim font-medium">{y}</div>
                         <div className={`text-xs sm:text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
                           {formatSalary(yCap)} <span className="text-[10px] font-normal text-text-dim">(HC: {formatSalary(getHardCap(y))})</span>

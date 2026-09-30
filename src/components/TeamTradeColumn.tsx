@@ -43,13 +43,13 @@ export default function TeamTradeColumn({
   const showDestPicker = otherTeamsInTrade.length > 1;
 
   return (
-    <div className="bg-surface rounded-xl border border-border flex flex-col min-w-[260px] sm:min-w-[280px]">
+    <div className="bg-surface rounded-sm border border-border flex flex-col min-w-[260px] sm:min-w-[280px]">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
           <select
             value={teamName}
             onChange={(e) => onTeamChange(e.target.value)}
-            className="bg-surface-light text-text border border-border rounded-lg px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary"
+            className="bg-surface-light text-text border border-border rounded-sm px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary"
           >
             <option value="">Select Team</option>
             {allTeams.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -73,7 +73,7 @@ export default function TeamTradeColumn({
       {teamName && (
         <>
           <div className="p-3 border-b border-border">
-            <h3 className="text-xs font-semibold text-cap-over mb-2 uppercase tracking-wider">
+            <h3 className="text-lg text-cap-over mb-1">
               Sending Out ({formatSalary(outSalary)})
             </h3>
             {playersOut.length === 0 ? (
@@ -140,7 +140,7 @@ export default function TeamTradeColumn({
           </div>
 
           <div className="p-3 border-b border-border">
-            <h3 className="text-xs font-semibold text-cap-under mb-2 uppercase tracking-wider">
+            <h3 className="text-lg text-cap-under mb-1">
               Receiving ({formatSalary(inSalary - incomingRetained)})
             </h3>
             {playersIn.length === 0 ? (
@@ -158,7 +158,7 @@ export default function TeamTradeColumn({
           </div>
 
           <div className="p-3 flex-1 overflow-y-auto max-h-64">
-            <h3 className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wider">Roster</h3>
+            <h3 className="text-lg text-text mb-1">Roster</h3>
             <div className="space-y-0.5">
               {availablePlayers.map((p) => (
                 <button

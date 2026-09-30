@@ -204,7 +204,7 @@ export default function TradeFinderPage() {
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-6">
-        <h1 className="text-2xl font-bold">Trade Finder</h1>
+        <h1 className="text-4xl">Trade Finder</h1>
         <span className="text-sm text-text-muted">
           {owner?.user_name ?? teamName} &mdash; {teamName}
         </span>
@@ -213,9 +213,9 @@ export default function TradeFinderPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column: select your players */}
         <div className="lg:col-span-1">
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-sm border border-border overflow-hidden">
             <div className="p-4 border-b border-border">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted mb-2">
+              <h2 className="text-xl text-text mb-2">
                 Your Players to Trade
               </h2>
               <input
@@ -223,7 +223,7 @@ export default function TradeFinderPage() {
                 placeholder="Search roster..."
                 value={rosterSearch}
                 onChange={(e) => setRosterSearch(e.target.value)}
-                className="w-full bg-surface-light border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full bg-surface-light border border-border rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
 
@@ -293,8 +293,8 @@ export default function TradeFinderPage() {
         {/* Right column: filters + results */}
         <div className="lg:col-span-2 space-y-6">
           {/* Filters */}
-          <div className="bg-surface rounded-xl border border-border p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted mb-4">
+          <div className="bg-surface rounded-sm border border-border p-4">
+            <h2 className="text-xl text-text mb-4">
               Search Filters
             </h2>
 
@@ -422,7 +422,7 @@ export default function TradeFinderPage() {
             <button
               onClick={findPackages}
               disabled={selectedPlayers.length === 0}
-              className="w-full mt-4 py-2.5 bg-primary text-white rounded-lg font-medium disabled:opacity-40 hover:bg-primary-hover transition-colors"
+              className="w-full mt-4 py-2.5 bg-primary text-white rounded-sm font-medium disabled:opacity-40 hover:bg-primary-hover transition-colors"
             >
               Find Packages
             </button>
@@ -436,9 +436,9 @@ export default function TradeFinderPage() {
 
           {/* Results */}
           {searched && (
-            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <div className="bg-surface rounded-sm border border-border overflow-hidden">
               <div className="p-4 border-b border-border">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">
+                <h2 className="text-xl text-text">
                   Results ({results.length})
                 </h2>
               </div>
@@ -480,7 +480,7 @@ export default function TradeFinderPage() {
                       </div>
                       <button
                         onClick={() => sendToTradeMachine(pkg)}
-                        className="mt-2 w-full py-1.5 text-xs font-medium bg-primary/10 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition-colors"
+                        className="mt-2 w-full py-1.5 text-xs font-medium bg-primary/10 text-primary border border-primary/30 rounded-sm hover:bg-primary/15 transition-colors"
                       >
                         Send to Trade Machine
                       </button>

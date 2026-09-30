@@ -81,7 +81,7 @@ export default function CommissionerPage() {
   if (!isWhitelisted && !isSubCommish) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="bg-surface border border-border rounded-xl p-6 w-full max-w-sm space-y-2 text-center">
+        <div className="bg-surface border border-border rounded-sm p-6 w-full max-w-sm space-y-2 text-center">
           <h1 className="text-xl font-bold text-text">Commissioner Tools</h1>
           <p className="text-sm text-text-muted">
             Open your commissioner login link on this device to get in.
@@ -229,14 +229,14 @@ export default function CommissionerPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col lg:flex-row gap-6">
       <div className="flex-1 min-w-0 space-y-8">
-      <h1 className="text-2xl font-bold text-text">Commissioner Tools</h1>
+      <h1 className="text-4xl">Commissioner Tools</h1>
 
       {/* Higher or Lower game */}
       {gamePair && (
-        <section className="bg-surface border border-border rounded-xl p-5 space-y-4">
+        <section className="bg-surface border border-border rounded-sm p-5 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+              <h3 className="text-xl text-text">
                 Higher or Lower
               </h3>
               <p className="text-xs text-text-dim mt-0.5">
@@ -274,7 +274,7 @@ export default function CommissionerPage() {
                   type="button"
                   disabled={!!gameReveal}
                   onClick={() => handleGameGuess(side)}
-                  className={`border rounded-xl px-4 py-5 text-left transition-colors ${stateClass}`}
+                  className={`border rounded-sm px-4 py-5 text-left transition-colors ${stateClass}`}
                 >
                   <div className="text-xs text-text-dim truncate">{p.team}</div>
                   <div className="text-lg font-bold text-text truncate">{p.name}</div>
@@ -293,7 +293,7 @@ export default function CommissionerPage() {
             <button
               type="button"
               onClick={newGameRound}
-              className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
+              className="w-full py-2.5 rounded-sm bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
             >
               Next Round
             </button>
@@ -316,10 +316,10 @@ export default function CommissionerPage() {
               }
             }}
             placeholder="Type a player name..."
-            className="w-full px-4 py-3 rounded-lg bg-surface border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+            className="w-full px-4 py-3 rounded-sm bg-surface border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
           />
           {filtered.length > 0 && !selectedPlayer && (
-            <ul className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg max-h-60 overflow-y-auto">
+            <ul className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-sm max-h-60 overflow-y-auto">
               {filtered.map((p) => {
                 const pv = values[p.id];
                 const missingStats = !pv;
@@ -348,7 +348,7 @@ export default function CommissionerPage() {
 
       {/* Selected Player Card */}
       {selectedPlayer && (
-        <section className="bg-surface border border-border rounded-xl p-6 space-y-6">
+        <section className="bg-surface border border-border rounded-sm p-6 space-y-6">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-xl font-bold text-text">{selectedPlayer.name}</h2>
@@ -373,7 +373,7 @@ export default function CommissionerPage() {
 
           {/* Edit Form */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            <h3 className="text-xl text-text">
               Edit Player Stats
             </h3>
             <p className="text-xs text-text-dim">
@@ -398,7 +398,7 @@ export default function CommissionerPage() {
                     value={val}
                     onChange={(e) => setter(e.target.value)}
                     placeholder={ph}
-                    className="w-full px-3 py-2 rounded-lg bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
                   />
                 </div>
               ))}
@@ -410,7 +410,7 @@ export default function CommissionerPage() {
                   value={editFppg}
                   onChange={(e) => setEditFppg(e.target.value)}
                   placeholder={computedFppg != null ? String(computedFppg) : "—"}
-                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-accent font-semibold placeholder:text-accent/40 placeholder:font-normal focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 rounded-sm bg-background border border-border text-accent font-semibold placeholder:text-accent/40 placeholder:font-normal focus:outline-none focus:border-primary"
                 />
               </div>
             </div>
@@ -423,7 +423,7 @@ export default function CommissionerPage() {
                   value={editAge}
                   onChange={(e) => setEditAge(e.target.value)}
                   placeholder="e.g. 25"
-                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
                 />
               </div>
               <div>
@@ -434,7 +434,7 @@ export default function CommissionerPage() {
                   value={editGp}
                   onChange={(e) => setEditGp(e.target.value)}
                   placeholder="e.g. 72"
-                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 rounded-sm bg-background border border-border text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
                 />
               </div>
             </div>
@@ -444,7 +444,7 @@ export default function CommissionerPage() {
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors disabled:opacity-50"
+                className="px-5 py-2.5 rounded-sm bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors disabled:opacity-50"
               >
                 {saving ? "Saving..." : "Save Stats"}
               </button>
@@ -462,10 +462,10 @@ export default function CommissionerPage() {
 
       {/* Players Missing Stats */}
       <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+        <h3 className="text-xl text-text">
           Players Missing Stats
         </h3>
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="bg-surface border border-border rounded-sm overflow-hidden">
           {(() => {
             const missing = players.filter((p) => p.name !== "Dead Cap" && p.team !== FREE_AGENCY_TEAM && !values[p.id]);
             if (missing.length === 0) {
@@ -505,9 +505,9 @@ export default function CommissionerPage() {
 
       {/* Fair Value sidebar */}
       <aside className="lg:w-72 lg:shrink-0 space-y-4 lg:sticky lg:top-4 self-start">
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="bg-surface border border-border rounded-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
-            <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            <h3 className="text-xl text-text">
               Team Strength
             </h3>
             <p className="text-xs text-text-dim mt-0.5">
@@ -531,9 +531,9 @@ export default function CommissionerPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-surface-light rounded-full overflow-hidden">
+                    <div className="flex-1 h-1.5 bg-surface-light overflow-hidden">
                       <div
-                        className="h-full bg-accent/60 rounded-full"
+                        className="h-full bg-text"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -547,9 +547,9 @@ export default function CommissionerPage() {
           </ul>
         </div>
 
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="bg-surface border border-border rounded-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
-            <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            <h3 className="text-xl text-text">
               Fair Value Rankings
             </h3>
             <p className="text-xs text-text-dim mt-0.5">

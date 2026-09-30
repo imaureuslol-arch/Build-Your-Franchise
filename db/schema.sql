@@ -119,3 +119,35 @@ create table sync_issues (
   created_at  timestamptz not null default now(),
   unique (kind, player_id)
 );
+
+-- Trades. Proposed by one team, accepted by every other team, approved by a
+-- commissioner, then executed: players move and retained salary is booked
+-- as dead cap (a positive row for the team that keeps it, a negative row -
+-- a credit - for the team that receives the player).
+create table trades (
+  id           uuid primary key default gen_random_uuid(),
+  status       text not null check (status in ('proposed', 'accepted', 'approved', 'declined', 'rejected', 'cancelled')),
+  proposed_by  int references teams(id) on delete set null,
+  season       int not null,
+  created_at   timestamptz not null default now(),
+  decided_at   timestamptz,
+  note         text
+);
+
+create table trade_teams (
+  trade_id     uuid not null references trades(id) on delete cascade,
+  team_id      int not null references teams(id) on delete cascade,
+  retained     bigint not null default 0,
+  accepted_at  timestamptz,
+  primary key (trade_id, team_id)
+);
+
+-- player_id null = the team's dead cap changing hands.
+create table trade_items (
+  id           serial primary key,
+  trade_id     uuid not null references trades(id) on delete cascade,
+  player_id    int references players(id) on delete cascade,
+  from_team    int not null references teams(id) on delete cascade,
+  to_team      int not null references teams(id) on delete cascade
+);
+create index trade_items_trade_idx on trade_items(trade_id);

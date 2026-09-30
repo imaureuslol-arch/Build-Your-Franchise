@@ -9,152 +9,129 @@ import {
   getTeamTotalCap,
   getCapStatus,
   formatSalary,
+  isDeadCap,
+  getCurrentSeasonYear,
   FREE_AGENCY_TEAM,
   getHardCap,
   getSoftCap,
 } from "@/lib/types";
+
+const statusText = { under: "text-cap-under", yellow: "text-cap-yellow", over: "text-cap-over" } as const;
+const statusBar = { under: "bg-cap-under", yellow: "bg-cap-yellow", over: "bg-cap-over" } as const;
 
 export default function HomePage() {
   const { players, loading: pLoading } = usePlayers();
   const { owners, loading: oLoading } = useTeamOwners();
   const loading = pLoading || oLoading;
 
-  const teamCaps = useMemo(() => {
-    const teamMap = new Map<string, typeof players>();
+  const season = getCurrentSeasonYear();
+  const soft = getSoftCap();
+  const hard = getHardCap();
+  // Bars run to 125% of the hard cap so the markers sit well inside.
+  const scale = hard * 1.25;
+
+  const teams = useMemo(() => {
+    const byTeam = new Map<string, typeof players>();
     for (const p of players) {
       if (!p.team || p.team === FREE_AGENCY_TEAM) continue;
-      if (!teamMap.has(p.team)) teamMap.set(p.team, []);
-      teamMap.get(p.team)!.push(p);
+      if (!byTeam.has(p.team)) byTeam.set(p.team, []);
+      byTeam.get(p.team)!.push(p);
     }
-
-    return Array.from(teamMap.entries())
+    return Array.from(byTeam.entries())
       .map(([team, pls]) => {
-        const totalCap = getTeamTotalCap(pls);
+        const total = getTeamTotalCap(pls);
         return {
           team,
-          conference: owners.get(team)?.conference || "",
-          totalCap,
-          playerCount: pls.length,
-          status: getCapStatus(totalCap),
+          owner: owners.get(team)?.user_name ?? "",
+          conference: owners.get(team)?.conference ?? "",
+          total,
+          count: pls.filter((p) => !isDeadCap(p)).length,
+          status: getCapStatus(total),
         };
       })
-      .sort((a, b) => b.totalCap - a.totalCap);
+      .sort((a, b) => b.total - a.total);
   }, [players, owners]);
 
-  const overCount = teamCaps.filter((t) => t.status === "over").length;
-  const yellowCount = teamCaps.filter((t) => t.status === "yellow").length;
-  const underCount = teamCaps.filter((t) => t.status === "under").length;
+  if (loading) {
+    return <div className="max-w-7xl mx-auto px-4 py-10 text-text-muted">Loading…</div>;
+  }
 
-  const statusColors = {
-    under: "bg-cap-under",
-    yellow: "bg-cap-yellow",
-    over: "bg-cap-over",
-  };
-
-  const quickLinks: {
-    href: string;
-    label: string;
-    blurb: string;
-  }[] = [
-    { href: "/rosters", label: "Rosters", blurb: "Browse every team's roster and cap situation" },
-    { href: "/extensions", label: "Extensions", blurb: "Negotiate contract extensions with your players" },
-    { href: "/free-agency", label: "Free Agency", blurb: "Sign free agents" },
-  ];
+  const over = teams.filter((t) => t.status === "over").length;
+  const taxed = teams.filter((t) => t.status === "yellow").length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="text-center mb-8 sm:mb-10">
-        <h1 className="text-2xl sm:text-4xl font-bold mb-2">Build Your Franchise</h1>
-        <p className="text-text-muted text-sm sm:text-lg">
-          Mock trades, offer extensions, and view rosters for your cap league
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
-        {quickLinks.map((ql) => (
-          <Link
-            key={ql.href}
-            href={ql.href}
-            className="group bg-surface border border-border rounded-xl px-4 py-4 sm:py-5 hover:border-primary/60 hover:bg-surface-light/50 transition-colors"
-          >
-            <div className="text-base sm:text-lg font-bold text-text group-hover:text-primary transition-colors">
-              {ql.label}
-            </div>
-            <div className="text-xs sm:text-sm text-text-muted mt-1">
-              {ql.blurb}
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      {loading ? (
-        <div className="text-center text-text-muted">Loading cap data...</div>
-      ) : (
-        <>
-          <h2 className="text-xl font-bold mb-4">League Cap Overview</h2>
-
-          <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
-            <div className="bg-cap-over/10 border border-cap-over/30 rounded-lg px-2 sm:px-4 py-2 text-center sm:text-left">
-              <span className="text-cap-over font-bold text-xl sm:text-2xl">{overCount}</span>
-              <span className="text-text-muted text-xs sm:text-sm ml-1 sm:ml-2">Over Hard Cap</span>
-            </div>
-            <div className="bg-cap-yellow/10 border border-cap-yellow/30 rounded-lg px-2 sm:px-4 py-2 text-center sm:text-left">
-              <span className="text-cap-yellow font-bold text-xl sm:text-2xl">{yellowCount}</span>
-              <span className="text-text-muted text-xs sm:text-sm ml-1 sm:ml-2">Over Soft Cap</span>
-            </div>
-            <div className="bg-cap-under/10 border border-cap-under/30 rounded-lg px-2 sm:px-4 py-2 text-center sm:text-left">
-              <span className="text-cap-under font-bold text-xl sm:text-2xl">{underCount}</span>
-              <span className="text-text-muted text-xs sm:text-sm ml-1 sm:ml-2">Under Cap</span>
-            </div>
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3 mb-4">
+        <h1>
+          {season - 1}–{String(season).slice(2)} Payrolls
+        </h1>
+        <dl className="flex gap-6 text-sm">
+          <div>
+            <dt className="text-text-dim">Soft cap</dt>
+            <dd className="font-mono font-semibold">{formatSalary(soft)}</dd>
           </div>
+          <div>
+            <dt className="text-text-dim">Hard cap</dt>
+            <dd className="font-mono font-semibold">{formatSalary(hard)}</dd>
+          </div>
+          <div>
+            <dt className="text-text-dim">Over soft / hard</dt>
+            <dd className="font-mono font-semibold">
+              <span className="text-cap-yellow">{taxed}</span> / <span className="text-cap-over">{over}</span>
+            </dd>
+          </div>
+        </dl>
+      </div>
 
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            {teamCaps.map((tc, i) => {
-              const hardCap = getHardCap();
-              const softCap = getSoftCap();
-              const pct = Math.min((tc.totalCap / (hardCap * 1.3)) * 100, 100);
-              return (
-                <div
-                  key={tc.team}
-                  className={`flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-2.5 ${
-                    i > 0 ? "border-t border-border/50" : ""
-                  } hover:bg-surface-light/50 transition-colors`}
-                >
-                  <span className="text-xs sm:text-sm font-medium w-24 sm:w-40 truncate shrink-0">
-                    {tc.team}
-                  </span>
-                  <div className="flex-1 h-4 sm:h-5 bg-surface-light rounded-full overflow-hidden relative">
+      <table className="w-full text-sm border-t-2 border-text">
+        <thead>
+          <tr className="text-left font-blocky uppercase text-text-muted border-b border-text">
+            <th className="py-1.5 pr-2 w-8 font-bold">#</th>
+            <th className="py-1.5 pr-4 font-bold">Team</th>
+            <th className="py-1.5 pr-4 font-bold hidden md:table-cell">Owner</th>
+            <th className="py-1.5 pr-4 font-bold text-right hidden sm:table-cell">Pl</th>
+            <th className="py-1.5 pr-4 font-bold text-right">Payroll</th>
+            <th className="py-1.5 pr-4 font-bold text-right hidden sm:table-cell">To soft cap</th>
+            <th className="py-1.5 font-bold hidden lg:table-cell w-[32%]"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {teams.map((t, i) => {
+            const room = soft - t.total;
+            return (
+              <tr key={t.team} className="border-b border-border hover:bg-surface-light">
+                <td className="py-2 pr-2 font-mono text-text-dim">{i + 1}</td>
+                <td className="py-2 pr-4 font-semibold">
+                  <Link href={`/rosters?team=${encodeURIComponent(t.team)}`} className="hover:underline">
+                    {t.team}
+                  </Link>
+                </td>
+                <td className="py-2 pr-4 text-text-muted hidden md:table-cell">{t.owner}</td>
+                <td className="py-2 pr-4 font-mono text-right text-text-muted hidden sm:table-cell">{t.count}</td>
+                <td className={`py-2 pr-4 font-mono font-semibold text-right ${statusText[t.status]}`}>
+                  {formatSalary(t.total)}
+                </td>
+                <td className="py-2 pr-4 font-mono text-right hidden sm:table-cell">
+                  {room >= 0 ? formatSalary(room) : <span className="text-cap-over">−{formatSalary(-room)}</span>}
+                </td>
+                <td className="py-2 hidden lg:table-cell">
+                  <div className="relative h-2.5 bg-surface-light">
                     <div
-                      className={`h-full rounded-full transition-all ${statusColors[tc.status]}`}
-                      style={{ width: `${pct}%`, opacity: 0.7 }}
+                      className={`absolute inset-y-0 left-0 ${statusBar[t.status]}`}
+                      style={{ width: `${Math.min(100, (t.total / scale) * 100)}%` }}
                     />
-                    <div
-                      className="absolute top-0 bottom-0 w-px bg-cap-yellow/50"
-                      style={{ left: `${(softCap / (hardCap * 1.3)) * 100}%` }}
-                    />
-                    <div
-                      className="absolute top-0 bottom-0 w-px bg-cap-over/50"
-                      style={{ left: `${(hardCap / (hardCap * 1.3)) * 100}%` }}
-                    />
+                    <div className="absolute -inset-y-1 w-px bg-text/40" style={{ left: `${(soft / scale) * 100}%` }} />
+                    <div className="absolute -inset-y-1 w-px bg-text" style={{ left: `${(hard / scale) * 100}%` }} />
                   </div>
-                  <span className="text-xs sm:text-sm font-mono font-bold w-16 sm:w-24 text-right shrink-0">
-                    {formatSalary(tc.totalCap)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex justify-center gap-6 mt-3 text-xs text-text-dim">
-            <span className="flex items-center gap-1">
-              <span className="w-px h-3 bg-cap-yellow/50" /> {formatSalary(getSoftCap())} soft cap
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-px h-3 bg-cap-over/50" /> {formatSalary(getHardCap())} hard cap
-            </span>
-          </div>
-        </>
-      )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="mt-2 text-xs text-text-dim hidden lg:block">
+        Faint line: soft cap. Solid line: hard cap.
+      </p>
     </div>
   );
 }

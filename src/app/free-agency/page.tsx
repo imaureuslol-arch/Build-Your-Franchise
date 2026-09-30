@@ -251,19 +251,19 @@ export default function FreeAgencyPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
-      <h1 className="text-2xl font-bold mb-6">Free Agency Tracker</h1>
+      <h1 className="text-4xl mb-6">Free Agency Tracker</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Player List */}
         <div className="lg:col-span-1">
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-sm border border-border overflow-hidden">
             <div className="p-4 border-b border-border">
               <input
                 type="text"
                 placeholder="Search players..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-surface-light border border-border rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none"
+                className="w-full bg-surface-light border border-border rounded-sm px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none"
               />
             </div>
             <div className="max-h-[600px] overflow-y-auto">
@@ -285,7 +285,7 @@ export default function FreeAgencyPage() {
                         )}
                       </div>
                       {playerOffers && playerOffers[0] && (
-                        <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ml-2 font-mono">
+                        <span className="bg-primary/15 text-primary text-[11px] px-1 font-semibold shrink-0 ml-2 font-mono">
                           {formatSalary(getWeightedValue(playerOffers[0]))}
                         </span>
                       )}
@@ -300,16 +300,16 @@ export default function FreeAgencyPage() {
         {/* Bid Builder */}
         <div className="md:col-span-1 lg:col-span-2">
           {!selectedPlayer ? (
-            <div className="bg-surface rounded-xl border border-border flex items-center justify-center h-96 text-text-dim">
+            <div className="bg-surface rounded-sm border border-border flex items-center justify-center h-96 text-text-dim">
               Select a player to build a bid
             </div>
           ) : (
-            <div className="bg-surface rounded-xl border border-border p-6">
+            <div className="bg-surface rounded-sm border border-border p-6">
               <h2 className="font-bold text-xl mb-4">{selectedPlayer.name}</h2>
               
               <div className="mb-6">
                 <label className="text-xs font-bold text-text-muted uppercase mb-2 block">Your Identity</label>
-                <div className="bg-surface-light border border-border rounded-lg px-3 py-2 w-full text-sm text-text">
+                <div className="bg-surface-light border border-border rounded-sm px-3 py-2 w-full text-sm text-text">
                   {myOwner ? `${myOwner.user_name} (${myOwner.team_name})` : "Not identified"}
                 </div>
               </div>
@@ -325,7 +325,7 @@ export default function FreeAgencyPage() {
                         key={year}
                         disabled={isDisabled}
                         onClick={() => toggleYear(year)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        className={`px-4 py-2 rounded-sm text-sm font-medium transition-colors ${
                           isSelected ? "bg-primary text-white" : "bg-surface-light border border-border text-text-muted"
                         } ${isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
                       >
@@ -337,7 +337,7 @@ export default function FreeAgencyPage() {
               </div>
 
               {isOverHardCap && (
-                <div className="bg-cap-over/10 border border-cap-over/30 rounded-lg p-3 mb-4 text-xs text-cap-over">
+                <div className="bg-cap-over/10 border border-cap-over/30 rounded-sm p-3 mb-4 text-xs text-cap-over">
                   Your team is over the hard cap — offers are locked to the minimum ({formatSalary(MIN_OFFER_PER_YEAR)}/yr).
                 </div>
               )}
@@ -365,7 +365,7 @@ export default function FreeAgencyPage() {
               )}
 
               {errors.length > 0 && offerYears.length > 0 && (
-                <div className="bg-cap-over/10 border border-cap-over/30 rounded-lg p-3 mb-4 text-xs text-cap-over space-y-1">
+                <div className="bg-cap-over/10 border border-cap-over/30 rounded-sm p-3 mb-4 text-xs text-cap-over space-y-1">
                   {errors.map((err, i) => <div key={i}>• {err}</div>)}
                 </div>
               )}
@@ -382,7 +382,7 @@ export default function FreeAgencyPage() {
                 const rank = existing.filter((o) => getWeightedValue(o) >= myWeighted).length + 1;
                 return (
                   <div
-                    className={`rounded-lg p-3 mb-4 text-xs border ${
+                    className={`rounded-sm p-3 mb-4 text-xs border ${
                       wouldWin
                         ? "bg-cap-under/10 border-cap-under/40 text-cap-under"
                         : "bg-surface-light border-border text-text-muted"
@@ -406,7 +406,7 @@ export default function FreeAgencyPage() {
               <button
                 onClick={handleSubmit}
                 disabled={errors.length > 0}
-                className="w-full py-3 bg-primary text-white rounded-lg font-bold hover:bg-primary-hover disabled:opacity-30"
+                className="w-full py-3 bg-primary text-white rounded-sm font-bold hover:bg-primary-hover disabled:opacity-30"
               >
                 Submit Official Bid
               </button>
@@ -416,7 +416,7 @@ export default function FreeAgencyPage() {
 
         {/* Offer Log */}
         <div className="lg:col-span-1">
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-sm border border-border overflow-hidden">
             <div className="p-4 border-b border-border font-bold text-sm">Offer Log</div>
             <div className="max-h-[600px] overflow-y-auto">
               {playerIdsWithOffers.map((pId) => {
@@ -479,9 +479,9 @@ export default function FreeAgencyPage() {
       {/* Copy Popup */}
       {showCopyPopup && copiedOffer && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface rounded-xl p-6 max-w-sm w-full border border-border">
+          <div className="bg-surface rounded-sm p-6 max-w-sm w-full border border-border">
             <h3 className="font-bold text-primary mb-4">Bid Formatted</h3>
-            <pre className="bg-surface-light p-4 rounded-lg text-[10px] font-mono whitespace-pre-wrap mb-4">
+            <pre className="bg-surface-light p-4 rounded-sm text-[10px] font-mono whitespace-pre-wrap mb-4">
               {getOfferCopyText(copiedOffer)}
             </pre>
             <button

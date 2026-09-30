@@ -33,12 +33,6 @@ export interface TradeTeam {
   incomingRetained?: number;
 }
 
-export interface ConfirmedTrade {
-  id: string;
-  teams: TradeTeam[];
-  timestamp: number;
-}
-
 export interface ExtensionOffer {
   years: number[];
   amounts: { [year: number]: number };

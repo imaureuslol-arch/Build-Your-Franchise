@@ -29,7 +29,7 @@ export default function AccountPage() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-10 space-y-6">
-      <h1 className="text-2xl font-bold">Account</h1>
+      <h1 className="text-4xl">Account</h1>
 
       {!loggedIn ? (
         <p className="text-sm text-text-muted">
@@ -43,26 +43,26 @@ export default function AccountPage() {
             {isWhitelisted ? " · commissioner" : isSubCommish ? " · sub-commissioner" : ""}.
           </p>
 
-          <section className="bg-surface border border-border rounded-xl p-5 space-y-3">
+          <section className="bg-surface border border-border rounded-sm p-5 space-y-3">
             <h2 className="font-semibold">Add another device</h2>
             <p className="text-sm text-text-muted">
               Makes a link that works once, for 10 minutes. Open it on your phone or other computer.
             </p>
             {link ? (
               <div className="space-y-2">
-                <code className="block text-xs break-all bg-surface-light border border-border rounded-lg p-2">{link}</code>
+                <code className="block text-xs break-all bg-surface-light border border-border rounded-sm p-2">{link}</code>
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(link);
                     setCopied(true);
                   }}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-primary text-white"
+                  className="px-3 py-1.5 text-sm rounded-sm bg-primary text-white"
                 >
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
             ) : (
-              <button onClick={makeDeviceLink} className="px-3 py-1.5 text-sm rounded-lg bg-primary text-white">
+              <button onClick={makeDeviceLink} className="px-3 py-1.5 text-sm rounded-sm bg-primary text-white">
                 Make device link
               </button>
             )}

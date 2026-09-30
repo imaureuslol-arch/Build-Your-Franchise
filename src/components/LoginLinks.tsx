@@ -96,12 +96,12 @@ export default function LoginLinks() {
     setMsg("Copied.");
   }
 
-  const btn = "text-xs px-2.5 py-1 rounded-md border border-border hover:bg-surface-light disabled:opacity-40";
+  const btn = "text-xs px-2.5 py-1 rounded-sm border border-border hover:bg-surface-light disabled:opacity-40";
 
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">Login Links</h3>
+        <h3 className="text-xl text-text">Login Links</h3>
         <button className={btn} disabled={busy === "sub"} onClick={newSubcommishLink}>
           New sub-commissioner link
         </button>
@@ -113,14 +113,14 @@ export default function LoginLinks() {
       {msg && <p className="text-xs text-text-muted">{msg}</p>}
 
       {links["Sub-commissioner"] && (
-        <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 text-xs flex items-center gap-2">
+        <div className="bg-primary/10 border border-primary/30 rounded-sm p-3 text-xs flex items-center gap-2">
           <span className="font-semibold shrink-0">Sub-commissioner:</span>
           <code className="truncate flex-1">{links["Sub-commissioner"]}</code>
           <button className={btn} onClick={() => copy(links["Sub-commissioner"])}>Copy</button>
         </div>
       )}
 
-      <div className="bg-surface border border-border rounded-xl divide-y divide-border">
+      <div className="bg-surface border border-border rounded-sm divide-y divide-border">
         {teams.map((t) => {
           const devices = sessions.filter((s) => s.team_id === t.id);
           const link = links[t.name];
@@ -147,7 +147,7 @@ export default function LoginLinks() {
                 </div>
               </div>
               {link && (
-                <div className="bg-primary/10 border border-primary/30 rounded-lg p-2 text-xs flex items-center gap-2">
+                <div className="bg-primary/10 border border-primary/30 rounded-sm p-2 text-xs flex items-center gap-2">
                   <code className="truncate flex-1">{link}</code>
                   <button className={btn} onClick={() => copy(link)}>Copy</button>
                 </div>

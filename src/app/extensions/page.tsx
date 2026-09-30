@@ -473,22 +473,25 @@ export default function ExtensionsPage() {
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-6">
-        <h1 className="text-2xl font-bold">Player Extensions</h1>
-        <span className="text-sm text-text-muted">
-          {owner?.user_name ?? teamName} &mdash; {teamName}
-        </span>
+        <h1 className="text-4xl">Player Extensions</h1>
+        {teamName && (
+          <span className="text-sm text-text-muted">
+            {teamName}
+            {owner?.user_name ? ` · ${owner.user_name}` : ""}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1 flex flex-col gap-6">
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-sm border border-border overflow-hidden">
             <div className="p-4 border-b border-border">
               <input
                 type="text"
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-surface-light border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full bg-surface-light border border-border rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div className="max-h-[600px] overflow-y-auto">
@@ -513,11 +516,11 @@ export default function ExtensionsPage() {
 
         <div className="lg:col-span-3 flex flex-col gap-6">
           {!selectedPlayer ? (
-            <div className="bg-surface rounded-xl border border-border flex items-center justify-center h-96 text-text-dim">
+            <div className="bg-surface rounded-sm border border-border flex items-center justify-center h-96 text-text-dim">
               Select a player to begin
             </div>
           ) : (
-            <div className="bg-surface rounded-xl border border-border flex flex-col h-[600px] sm:h-[700px]">
+            <div className="bg-surface rounded-sm border border-border flex flex-col h-[600px] sm:h-[700px]">
               <div className="p-4 border-b border-border flex justify-between items-start">
                 <div>
                   <h2 className="font-bold text-lg">{selectedPlayer.name}</h2>
@@ -550,7 +553,7 @@ export default function ExtensionsPage() {
                       className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm ${
+                        className={`max-w-[80%] rounded-sm px-4 py-2.5 text-sm ${
                           msg.role === "user"
                             ? "bg-primary text-white"
                             : "bg-surface-light text-text"
@@ -571,13 +574,13 @@ export default function ExtensionsPage() {
                   <div className="flex gap-3">
                     <button
                       onClick={() => handleFinalDecision(true)}
-                      className="flex-1 py-3 bg-cap-under text-white rounded-lg font-bold hover:opacity-90 transition-opacity"
+                      className="flex-1 py-3 bg-cap-under text-white rounded-sm font-bold hover:opacity-90 transition-opacity"
                     >
                       ACCEPT ({formatSalary(finalDemandAmount)}/yr)
                     </button>
                     <button
                       onClick={() => handleFinalDecision(false)}
-                      className="flex-1 py-3 bg-cap-over text-white rounded-lg font-bold hover:opacity-90 transition-opacity"
+                      className="flex-1 py-3 bg-cap-over text-white rounded-sm font-bold hover:opacity-90 transition-opacity"
                     >
                       DECLINE
                     </button>
@@ -600,7 +603,7 @@ export default function ExtensionsPage() {
                             key={year}
                             disabled={isDisabled}
                             onClick={() => toggleYear(year)}
-                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            className={`px-4 py-1.5 rounded-sm text-sm font-medium transition-colors ${
                               isSelected
                                 ? "bg-primary text-white"
                                 : "bg-surface-light text-text-muted border border-border"
@@ -646,7 +649,7 @@ export default function ExtensionsPage() {
                   <button
                     onClick={submitOffer}
                     disabled={selectedYears.length === 0}
-                    className="w-full py-2.5 bg-primary text-white rounded-lg font-medium disabled:opacity-40"
+                    className="w-full py-2.5 bg-primary text-white rounded-sm font-medium disabled:opacity-40"
                   >
                     Submit Offer ({Math.min(offersUsed + 1, 3)}/3)
                   </button>
@@ -662,7 +665,7 @@ export default function ExtensionsPage() {
                     onClick={() =>
                       agreementReached ? setShowCopyPopup(true) : startNegotiation(selectedPlayer)
                     }
-                    className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                    className={`px-4 py-2 rounded-sm text-sm font-medium ${
                       agreementReached
                         ? "bg-cap-under text-white"
                         : "bg-surface-light border border-border text-text-muted"
@@ -675,7 +678,7 @@ export default function ExtensionsPage() {
             </div>
           )}
 
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-sm border border-border overflow-hidden">
             <div className="px-4 py-3 border-b border-border">
               <h3 className="text-sm font-bold">Extension History</h3>
             </div>
@@ -686,7 +689,7 @@ export default function ExtensionsPage() {
                 <>
                   {myExtensions.length > 0 && (
                     <>
-                      <div className="px-4 py-2 bg-surface-light/50 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                      <div className="px-4 py-2 bg-surface-light/50 font-blocky text-sm font-bold uppercase text-text-muted">
                         Your Team
                       </div>
                       {myExtensions.map((ext) => (
@@ -708,7 +711,7 @@ export default function ExtensionsPage() {
                   )}
                   {leagueExtensions.length > 0 && (
                     <>
-                      <div className="px-4 py-2 bg-surface-light/50 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                      <div className="px-4 py-2 bg-surface-light/50 font-blocky text-sm font-bold uppercase text-text-muted">
                         League
                       </div>
                       {leagueExtensions.map((ext) => (
@@ -738,21 +741,21 @@ export default function ExtensionsPage() {
 
       {showCopyPopup && finalOffer && selectedPlayer && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface rounded-xl p-6 max-w-md w-full border border-border">
+          <div className="bg-surface rounded-sm p-6 max-w-md w-full border border-border">
             <h3 className="text-lg font-bold mb-4 text-cap-under">Extension Signed</h3>
-            <pre className="bg-surface-light rounded-lg p-4 text-sm font-mono whitespace-pre-wrap mb-4">
+            <pre className="bg-surface-light rounded-sm p-4 text-sm font-mono whitespace-pre-wrap mb-4">
               {getCopyText()}
             </pre>
             <div className="flex gap-3">
               <button
                 onClick={() => navigator.clipboard.writeText(getCopyText())}
-                className="flex-1 py-2.5 bg-primary text-white rounded-lg font-medium"
+                className="flex-1 py-2.5 bg-primary text-white rounded-sm font-medium"
               >
                 Copy
               </button>
               <button
                 onClick={() => setShowCopyPopup(false)}
-                className="flex-1 py-2.5 bg-surface-light border border-border rounded-lg"
+                className="flex-1 py-2.5 bg-surface-light border border-border rounded-sm"
               >
                 Close
               </button>
