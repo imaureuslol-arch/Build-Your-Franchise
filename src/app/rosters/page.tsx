@@ -36,6 +36,13 @@ export default function RostersPage() {
   const [showPlayerResults, setShowPlayerResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!selectedTeam) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSelectedTeam(null);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selectedTeam]);
+
   // Close player dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -104,6 +111,7 @@ export default function RostersPage() {
       .slice(0, 8);
   }, [searchQuery, rosterPlayers]);
 
+  const openTeam = teams.find((t) => t.team === selectedTeam) ?? null;
   const filteredTeams = teams.filter((t) => {
     if (conferenceFilter !== "All" && t.conference !== conferenceFilter) return false;
     if (searchQuery) {
@@ -213,17 +221,13 @@ export default function RostersPage() {
         </span>
       </div>
 
-      {/* An open card takes the full row; dense flow lets later cards fill the gap. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 grid-flow-row-dense gap-4 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTeams.map((team) => (
-          <div
+          <button
+            type="button"
             key={team.team}
-            className={`card-frame cursor-pointer transition-transform hover:-translate-y-0.5 ${
-              selectedTeam === team.team ? "md:col-span-2 lg:col-span-3" : ""
-            }`}
-            onClick={() =>
-              setSelectedTeam(selectedTeam === team.team ? null : team.team)
-            }
+            className="card-frame text-left cursor-pointer transition-transform hover:-translate-y-0.5"
+            onClick={() => setSelectedTeam(team.team)}
           >
             <div className="card-head px-4 py-2 flex items-baseline justify-between gap-2">
               <h2 className="text-xl truncate">{team.team}</h2>
@@ -255,69 +259,100 @@ export default function RostersPage() {
                 </div>
               </div>
             </div>
-
-            {selectedTeam === team.team && (
-              <>
-              {/* Cap Projections */}
-              <div className="border-t border-border px-4 py-3">
-                <h3 className="text-lg text-text mb-2">Cap Projections</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {SALARY_YEARS.map((y) => {
-                    const yCap = team.yearCaps[y];
-                    const yStatus = getCapStatus(yCap, y);
-                    const yDeadCap = team.yearDeadCaps[y];
-                    return (
-                      <div key={y} className={`rounded-sm border p-2 text-center ${capStatusBg[yStatus]}`}>
-                        <div className="text-[10px] text-text-dim font-medium">{y}</div>
-                        <div className={`text-xs sm:text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
-                          {formatSalary(yCap)} <span className="text-[10px] font-normal text-text-dim">(HC: {formatSalary(getHardCap(y))})</span>
-                        </div>
-                        {yDeadCap !== 0 && (
-                          <div className="text-[10px] font-mono text-text-dim">
-                            DC: <span className={yDeadCap < 0 ? "text-cap-under" : "text-cap-over"}>{formatSalary(yDeadCap)}</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Player Roster */}
-              <div className="border-t border-border overflow-x-auto">
-                <table className="w-full text-sm min-w-[480px]">
-                  <thead>
-                    <tr className="card-head text-xs font-blocky italic uppercase">
-                      <th className="text-left px-4 py-2 font-extrabold">Player</th>
-                      {SALARY_YEARS.map((y) => (
-                        <th key={y} className="text-right px-2 py-2 font-extrabold">
-                          &apos;{String(y).slice(2)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {team.players.map((player) => (
-                      <tr
-                        key={player.name}
-                        className="border-t border-border/50 even:bg-surface-light/50 hover:bg-surface-light"
-                      >
-                        <td className="px-4 py-2 font-medium">{player.name}</td>
-                        {SALARY_YEARS.map((y) => (
-                          <td key={y} className="text-right px-2 py-2 font-mono text-text-muted">
-                            {formatSalary(getPlayerSalary(player, y))}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              </>
-            )}
-          </div>
+          </button>
         ))}
       </div>
+
+      {/* The card back: opens over the grid so the grid itself never moves. */}
+      {openTeam && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-3 sm:p-8"
+          onClick={() => setSelectedTeam(null)}
+        >
+          <div
+            role="dialog"
+            aria-label={openTeam.team}
+            className="card-frame w-full max-w-3xl my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="card-head px-4 py-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-2xl truncate">{openTeam.team}</h2>
+                {openTeam.userName && <div className="text-xs text-white/60">{openTeam.userName}</div>}
+              </div>
+              <div className="flex items-center gap-4 shrink-0">
+                <span className={`text-xl font-mono font-bold ${capStatusColors[openTeam.capStatus]}`}>
+                  {formatSalary(openTeam.totalCap)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTeam(null)}
+                  aria-label="Close"
+                  className="text-white/70 hover:text-white text-2xl leading-none"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+
+            {/* Cap Projections */}
+            <div className="px-4 py-3">
+              <h3 className="text-lg text-text mb-2">Cap Projections</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {SALARY_YEARS.map((y) => {
+                  const yCap = openTeam.yearCaps[y];
+                  const yStatus = getCapStatus(yCap, y);
+                  const yDeadCap = openTeam.yearDeadCaps[y];
+                  return (
+                    <div key={y} className={`rounded-sm border p-2 text-center ${capStatusBg[yStatus]}`}>
+                      <div className="text-[10px] text-text-dim font-medium">{y}</div>
+                      <div className={`text-xs sm:text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
+                        {formatSalary(yCap)} <span className="text-[10px] font-normal text-text-dim">(HC: {formatSalary(getHardCap(y))})</span>
+                      </div>
+                      {yDeadCap !== 0 && (
+                        <div className="text-[10px] font-mono text-text-dim">
+                          DC: <span className={yDeadCap < 0 ? "text-cap-under" : "text-cap-over"}>{formatSalary(yDeadCap)}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Player Roster */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[440px]">
+                <thead>
+                  <tr className="card-head text-xs font-blocky italic uppercase">
+                    <th className="text-left px-4 py-2 font-extrabold">Player</th>
+                    {SALARY_YEARS.map((y) => (
+                      <th key={y} className="text-right px-3 py-2 font-extrabold">
+                        &apos;{String(y).slice(2)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {openTeam.players.map((player) => (
+                    <tr
+                      key={player.name}
+                      className="border-t border-border/50 even:bg-surface-light/50 hover:bg-surface-light"
+                    >
+                      <td className="px-4 py-2 font-medium">{player.name}</td>
+                      {SALARY_YEARS.map((y) => (
+                        <td key={y} className="text-right px-3 py-2 font-mono text-text-muted">
+                          {formatSalary(getPlayerSalary(player, y))}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
