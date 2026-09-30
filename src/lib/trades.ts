@@ -2,18 +2,23 @@
  * Trades on the server: checking a proposal, storing it, and executing it.
  *
  * A trade is a set of teams (each may retain salary on what it sends out)
- * and a set of items, each moving one player — or, with a negative id, the
- * sending team's dead cap — from one team to another. Cap rules are the same
+ * and a set of items, each moving one player, the sending team's dead cap
+ * (id = -team id) or a draft pick (id from pickPlayerId) from one team to
+ * another. Cap rules are the same
  * validateTrade the Trade Machine runs in the browser, re-run here against
  * the live book so nothing can be approved on stale numbers.
  */
 
 import { sql } from "./db";
 import { loadLeague } from "./league";
+import { loadPickPlayers } from "./picks";
 import {
+  decodePickId,
   getCurrentSalary,
   getCurrentSeasonYear,
   isDeadCap,
+  isPickId,
+  pickPlayerId,
   validateTrade,
   FREE_AGENCY_TEAM,
   type Player,
@@ -39,15 +44,16 @@ export async function checkTrade(input: TradeInput): Promise<TradeCheck> {
   if (new Set(names).size !== names.length) errors.push("A team is in the trade twice.");
   if (input.items.length === 0) errors.push("Nobody is being traded.");
 
-  const [{ players }, teamRows] = await Promise.all([loadLeague(), sql`select id, name from teams`]);
+  const [{ players }, picks, teamRows] = await Promise.all([loadLeague(), loadPickPlayers(), sql`select id, name from teams`]);
   const teamIds = new Map<string, number>(teamRows.map((t) => [t.name as string, t.id as number]));
   for (const n of names) if (!teamIds.has(n)) errors.push(`Unknown team: ${n}`);
 
-  const byId = new Map(players.map((p) => [p.id, p]));
+  const byId = new Map([...players, ...picks].map((p) => [p.id, p]));
   const seen = new Set<number>();
   for (const item of input.items) {
     const p = byId.get(item.playerId);
-    if (!p || p.team === FREE_AGENCY_TEAM) errors.push("A player in this trade is no longer on a roster.");
+    if (!p && isPickId(item.playerId)) errors.push("A draft pick in this trade can no longer be traded.");
+    else if (!p || p.team === FREE_AGENCY_TEAM) errors.push("A player in this trade is no longer on a roster.");
     else if (p.team !== item.from) errors.push(`${p.name} is no longer on ${item.from}.`);
     if (!names.includes(item.from) || !names.includes(item.to) || item.from === item.to) {
       errors.push("Every player must go to another team in the trade.");
@@ -122,9 +128,14 @@ export async function createTrade(
       return sql`insert into trade_teams (trade_id, team_id, retained, accepted_at)
                  values (${id}, ${teamId}, ${Math.max(0, Math.round(t.retained || 0))}, ${accepted})`;
     }),
-    ...input.items.map((i) => sql`
-      insert into trade_items (trade_id, player_id, from_team, to_team)
-      values (${id}, ${i.playerId > 0 ? i.playerId : null}, ${check.teamIds.get(i.from)!}, ${check.teamIds.get(i.to)!})`),
+    ...input.items.map((i) => {
+      const pick = isPickId(i.playerId) ? decodePickId(i.playerId) : null;
+      const kind = i.playerId > 0 ? "player" : pick ? "pick" : "dead_cap";
+      return sql`
+        insert into trade_items (trade_id, player_id, from_team, to_team, kind, pick_season, pick_round, pick_original)
+        values (${id}, ${i.playerId > 0 ? i.playerId : null}, ${check.teamIds.get(i.from)!}, ${check.teamIds.get(i.to)!},
+                ${kind}, ${pick?.season ?? null}, ${pick?.round ?? null}, ${pick?.originalTeamId ?? null})`;
+    }),
   ]);
   return id;
 }
@@ -133,13 +144,21 @@ export async function createTrade(
 export async function loadTradeInput(tradeId: string): Promise<TradeInput> {
   const [teams, items] = await Promise.all([
     sql`select t.name, tt.retained from trade_teams tt join teams t on t.id = tt.team_id where tt.trade_id = ${tradeId}`,
-    sql`select ti.player_id, ti.from_team, f.name as from_name, d.name as to_name
+    sql`select ti.player_id, ti.from_team, ti.kind, ti.pick_season, ti.pick_round, ti.pick_original,
+               f.name as from_name, d.name as to_name
         from trade_items ti join teams f on f.id = ti.from_team join teams d on d.id = ti.to_team
         where ti.trade_id = ${tradeId}`,
   ]);
   return {
     teams: teams.map((t) => ({ team: t.name, retained: Number(t.retained) })),
-    items: items.map((i) => ({ playerId: i.player_id ?? -i.from_team, from: i.from_name, to: i.to_name })),
+    items: items.map((i) => ({
+      playerId:
+        i.kind === "pick" ? pickPlayerId(i.pick_season, i.pick_round, i.pick_original)
+        : i.kind === "dead_cap" ? -i.from_team
+        : i.player_id,
+      from: i.from_name,
+      to: i.to_name,
+    })),
   };
 }
 
@@ -160,6 +179,10 @@ export async function executeTrade(tradeId: string): Promise<string[]> {
     const to = check.teamIds.get(i.to)!;
     if (i.playerId > 0) {
       q.push(sql`update players set team_id = ${to} where id = ${i.playerId}`);
+    } else if (isPickId(i.playerId)) {
+      const pick = decodePickId(i.playerId);
+      q.push(sql`update draft_picks set owner_team = ${to}
+                 where season = ${pick.season} and round = ${pick.round} and original_team = ${pick.originalTeamId}`);
     } else {
       q.push(sql`update dead_cap set team_id = ${to} where team_id = ${from}`);
     }
@@ -202,11 +225,17 @@ export async function listTrades(statuses: string[]): Promise<TradeView[]> {
   const [teams, items] = await Promise.all([
     sql`select tt.trade_id, t.name, tt.retained, tt.accepted_at from trade_teams tt
         join teams t on t.id = tt.team_id where tt.trade_id = any(${ids})`,
-    sql`select ti.trade_id, coalesce(p.name, 'Dead Cap') as player, f.name as from_name, d.name as to_name,
+    sql`select ti.trade_id,
+               case when ti.kind = 'pick' then ti.pick_season || ' ' || case ti.pick_round when 1 then '1st' when 2 then '2nd'
+                         else ti.pick_round || 'th' end || ' (' || orig.name || ')'
+                    else coalesce(p.name, 'Dead Cap') end as player,
+               f.name as from_name, d.name as to_name,
                (select amount from contracts c where c.player_id = ti.player_id and c.season = tr.season) as salary
         from trade_items ti join trades tr on tr.id = ti.trade_id
         join teams f on f.id = ti.from_team join teams d on d.id = ti.to_team
-        left join players p on p.id = ti.player_id where ti.trade_id = any(${ids})`,
+        left join players p on p.id = ti.player_id
+        left join teams orig on orig.id = ti.pick_original
+        where ti.trade_id = any(${ids})`,
   ]);
   return trades.map((t) => ({
     id: t.id,

@@ -303,7 +303,7 @@ export default function ExtensionsPage() {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-6">
         <h1 className="text-4xl">Player Extensions</h1>
         {teamName && (

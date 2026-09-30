@@ -202,11 +202,11 @@ export default function TradeFinderPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-6">
         <h1 className="text-4xl">Trade Finder</h1>
         <span className="text-sm text-text-muted">
-          {owner?.user_name ?? teamName} &mdash; {teamName}
+          {teamName ? `${teamName}${owner?.user_name ? ` · ${owner.user_name}` : ""}` : ""}
         </span>
       </div>
 
@@ -277,7 +277,7 @@ export default function TradeFinderPage() {
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="text-sm font-medium truncate">{player.name}</span>
                       {!hasValue && (
-                        <span className="text-[10px] text-text-dim shrink-0">No stats</span>
+                        <span className="text-xs text-text-dim shrink-0">No stats</span>
                       )}
                     </div>
                     <span className="text-xs text-text-dim font-mono shrink-0">
@@ -306,7 +306,7 @@ export default function TradeFinderPage() {
                 </label>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-text-dim w-8">Min</span>
+                    <span className="text-xs text-text-dim w-8">Min</span>
                     <input
                       type="range"
                       min={1}
@@ -321,7 +321,7 @@ export default function TradeFinderPage() {
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-text-dim w-8">Max</span>
+                    <span className="text-xs text-text-dim w-8">Max</span>
                     <input
                       type="range"
                       min={1}
@@ -345,7 +345,7 @@ export default function TradeFinderPage() {
                 </label>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-text-dim w-8">Min</span>
+                    <span className="text-xs text-text-dim w-8">Min</span>
                     <input
                       type="range"
                       min={18}
@@ -360,7 +360,7 @@ export default function TradeFinderPage() {
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-text-dim w-8">Max</span>
+                    <span className="text-xs text-text-dim w-8">Max</span>
                     <input
                       type="range"
                       min={18}
@@ -384,7 +384,7 @@ export default function TradeFinderPage() {
                 </label>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-text-dim w-8">Min</span>
+                    <span className="text-xs text-text-dim w-8">Min</span>
                     <input
                       type="range"
                       min={1_000_000}
@@ -400,7 +400,7 @@ export default function TradeFinderPage() {
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-text-dim w-8">Max</span>
+                    <span className="text-xs text-text-dim w-8">Max</span>
                     <input
                       type="range"
                       min={1_000_000}
@@ -468,7 +468,7 @@ export default function TradeFinderPage() {
                           >
                             <div className="flex items-center gap-1.5 min-w-0">
                               <span className="truncate">{p.name}</span>
-                              <span className="text-[10px] sm:text-xs text-text-dim shrink-0">
+                              <span className="text-xs sm:text-xs text-text-dim shrink-0">
                                 {p.age}
                               </span>
                             </div>

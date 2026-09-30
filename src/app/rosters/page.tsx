@@ -27,6 +27,15 @@ export default function RostersPage() {
   const loading = pLoading || oLoading;
   const router = useRouter();
 
+  // Draft picks each team owns, shown on its card back.
+  const [picks, setPicks] = useState<Player[]>([]);
+  useEffect(() => {
+    fetch("/api/picks")
+      .then((r) => (r.ok ? r.json() : { picks: [] }))
+      .then((d) => setPicks(d.picks))
+      .catch(() => {});
+  }, []);
+
   // /rosters?team=X (from the home page) opens that team's card.
   const [selectedTeam, setSelectedTeam] = useState<string | null>(() =>
     typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("team")
@@ -100,7 +109,7 @@ export default function RostersPage() {
       .sort((a, b) => a.team.localeCompare(b.team));
   }, [rosterPlayers, owners]);
 
-  const conferences = ["All", ...new Set(teams.map((t) => t.conference).filter(Boolean))];
+  const conferences = ["All", ...[...new Set(teams.map((t) => t.conference).filter(Boolean))].sort()];
 
   // Player search results
   const playerSearchResults = useMemo(() => {
@@ -158,7 +167,7 @@ export default function RostersPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-4xl">Rosters</h1>
         <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
@@ -305,12 +314,12 @@ export default function RostersPage() {
                   const yDeadCap = openTeam.yearDeadCaps[y];
                   return (
                     <div key={y} className={`rounded-sm border p-2 text-center ${capStatusBg[yStatus]}`}>
-                      <div className="text-[10px] text-text-dim font-medium">{y}</div>
+                      <div className="text-xs text-text-dim font-medium">{y}</div>
                       <div className={`text-xs sm:text-sm font-mono font-bold ${capStatusColors[yStatus]}`}>
-                        {formatSalary(yCap)} <span className="text-[10px] font-normal text-text-dim">(HC: {formatSalary(getHardCap(y))})</span>
+                        {formatSalary(yCap)} <span className="text-xs font-normal text-text-dim">(HC: {formatSalary(getHardCap(y))})</span>
                       </div>
                       {yDeadCap !== 0 && (
-                        <div className="text-[10px] font-mono text-text-dim">
+                        <div className="text-xs font-mono text-text-dim">
                           DC: <span className={yDeadCap < 0 ? "text-cap-under" : "text-cap-over"}>{formatSalary(yDeadCap)}</span>
                         </div>
                       )}
@@ -349,6 +358,24 @@ export default function RostersPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Draft picks this team owns */}
+            <div className="px-4 py-3 border-t border-border">
+              <h3 className="text-lg text-text mb-2">Draft Picks</h3>
+              {picks.filter((p) => p.team === openTeam.team).length === 0 ? (
+                <p className="text-sm text-text-dim">No picks in the next three drafts.</p>
+              ) : (
+                <ul className="flex flex-wrap gap-2">
+                  {picks
+                    .filter((p) => p.team === openTeam.team)
+                    .map((p) => (
+                      <li key={p.id} className="text-sm border border-border bg-surface-light px-2 py-1 rounded-sm">
+                        {p.name}
+                      </li>
+                    ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>

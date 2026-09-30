@@ -129,6 +129,28 @@ export function isDeadCap(player: { name: string }): boolean {
   return player.name === DEAD_CAP_NAME;
 }
 
+/*
+ * Draft picks travel through trades as salary-free "players" with an id that
+ * encodes the pick: -(season * 1000 + round * 100 + original team id). Dead
+ * cap uses -(team id), so the two never collide.
+ */
+export function pickPlayerId(season: number, round: number, originalTeamId: number): number {
+  return -(season * 1000 + round * 100 + originalTeamId);
+}
+
+export function isPickId(id: number): boolean {
+  return id <= -100_000;
+}
+
+export function isPick(player: { id: number }): boolean {
+  return isPickId(player.id);
+}
+
+export function decodePickId(id: number): { season: number; round: number; originalTeamId: number } {
+  const n = -id;
+  return { season: Math.floor(n / 1000), round: Math.floor((n % 1000) / 100), originalTeamId: n % 100 };
+}
+
 export function getTeamTotalCap(players: Player[]): number {
   return players.reduce((sum, p) => sum + (getCurrentSalary(p) || 0), 0);
 }

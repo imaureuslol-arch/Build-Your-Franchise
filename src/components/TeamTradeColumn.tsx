@@ -1,6 +1,9 @@
 "use client";
 
-import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap, getCurrentSalary } from "@/lib/types";
+import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap, isPick, getCurrentSalary } from "@/lib/types";
+
+/** Salary column: picks carry no salary until drafted. */
+const salaryText = (p: Player) => (isPick(p) ? "pick" : formatSalary(getCurrentSalary(p)));
 
 interface TeamTradeColumnProps {
   teamName: string;
@@ -37,13 +40,16 @@ export default function TeamTradeColumn({
   const maxRetention = Math.floor(realOutSalary * 0.25);
 
   const capColors = { under: "text-cap-under", yellow: "text-cap-yellow", over: "text-cap-over" };
-  const availablePlayers = teamPlayers
-    .filter((p) => !playersOut.some((out) => out.name === p.name))
+  const available = teamPlayers.filter((p) => !playersOut.some((out) => out.name === p.name));
+  const availablePlayers = available
+    .filter((p) => !isPick(p))
     .sort((a, b) => (getCurrentSalary(b) || 0) - (getCurrentSalary(a) || 0));
+  // teamPlayers arrives with picks in draft order.
+  const availablePicks = available.filter(isPick);
   const showDestPicker = otherTeamsInTrade.length > 1;
 
   return (
-    <div className="bg-surface rounded-sm border border-border flex flex-col min-w-[260px] sm:min-w-[280px]">
+    <div className="bg-surface rounded-sm border border-border flex flex-col">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
           <select
@@ -77,7 +83,7 @@ export default function TeamTradeColumn({
               Sending Out ({formatSalary(outSalary)})
             </h3>
             {playersOut.length === 0 ? (
-              <p className="text-text-dim text-xs">No players selected</p>
+              <p className="text-text-dim text-xs">Nothing selected</p>
             ) : (
               <div className="space-y-1.5">
                 {playersOut.map((p) => {
@@ -88,7 +94,7 @@ export default function TeamTradeColumn({
                       <div className="flex items-center justify-between text-sm">
                         <span>{p.name}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-text-muted font-mono text-xs">{formatSalary(getCurrentSalary(p))}</span>
+                          <span className="text-text-muted font-mono text-xs">{salaryText(p)}</span>
                           <button onClick={() => onRemovePlayerOut(p)} className="text-text-dim hover:text-danger text-xs">&times;</button>
                         </div>
                       </div>
@@ -131,7 +137,7 @@ export default function TeamTradeColumn({
                   onChange={(e) => onRetainedChange(parseInt(e.target.value))}
                   className="w-full"
                 />
-                <div className="flex justify-between text-[10px] text-text-dim mt-0.5">
+                <div className="flex justify-between text-xs text-text-dim mt-0.5">
                   <span>0%</span>
                   <span>Max 25% ({formatSalary(maxRetention)})</span>
                 </div>
@@ -144,13 +150,13 @@ export default function TeamTradeColumn({
               Receiving ({formatSalary(inSalary - incomingRetained)})
             </h3>
             {playersIn.length === 0 ? (
-              <p className="text-text-dim text-xs">Players sent here by other teams will appear</p>
+              <p className="text-text-dim text-xs">Players and picks sent here by other teams will appear</p>
             ) : (
               <div className="space-y-1">
                 {playersIn.map((p) => (
                   <div key={p.name} className="flex items-center justify-between bg-cap-under/10 rounded px-2 py-1 text-sm">
                     <span>{p.name}</span>
-                    <span className="text-text-muted font-mono text-xs">{formatSalary(getCurrentSalary(p))}</span>
+                    <span className="text-text-muted font-mono text-xs">{salaryText(p)}</span>
                   </div>
                 ))}
               </div>
@@ -171,6 +177,23 @@ export default function TeamTradeColumn({
                 </button>
               ))}
             </div>
+            {availablePicks.length > 0 && (
+              <>
+                <h3 className="text-lg text-text mt-3 mb-1">Draft Picks</h3>
+                <div className="space-y-0.5">
+                  {availablePicks.map((p) => (
+                    <button
+                      key={p.name}
+                      onClick={() => onAddPlayerOut(p)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-surface-light transition-colors text-left"
+                    >
+                      <span>{p.name}</span>
+                      <span className="text-text-dim font-mono text-xs">pick</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </>
       )}

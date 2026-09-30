@@ -447,7 +447,7 @@ export default function CommissionerPage() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-text-dim w-8 text-right shrink-0">
+                    <span className="text-xs text-text-dim w-8 text-right shrink-0">
                       {count} plr
                     </span>
                   </div>

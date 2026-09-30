@@ -2,7 +2,8 @@
  * Pull the league from Sleeper and reconcile it with the contract book.
  *
  * Applied automatically:
- *   - team owner and display name (Sleeper's team name, else "Team <owner>")
+ *   - team owner, display name (Sleeper's team name, else "Team <owner>")
+ *     and conference (the roster's Sleeper division: East / West)
  *   - new NBA players and their birthdate / NBA team
  * Flagged in sync_issues for the commissioner, never auto-applied, because
  * each has contract consequences:
@@ -12,6 +13,7 @@
  */
 
 import { sql } from "./db";
+import { applyPicks, pickDifferences, seedPicks, sleeperPicks, type MovedPick } from "./picks";
 
 const API = "https://api.sleeper.app/v1";
 
@@ -24,6 +26,15 @@ interface SleeperRoster {
   roster_id: number;
   owner_id: string | null;
   players: string[] | null;
+  settings?: { division?: number };
+}
+
+/** "Eastern Conference" -> "East"; any other division name is kept as is. */
+function conferenceName(division: string | undefined): string | null {
+  if (!division) return null;
+  if (/east/i.test(division)) return "East";
+  if (/west/i.test(division)) return "West";
+  return division;
 }
 interface SleeperPlayer {
   full_name?: string;
@@ -47,7 +58,8 @@ export interface SyncResult {
 }
 
 export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
-  const [users, rosters, catalogue] = await Promise.all([
+  const [league, users, rosters, catalogue] = await Promise.all([
+    get<{ metadata?: Record<string, string> }>(`/league/${leagueId}`),
     get<SleeperUser[]>(`/league/${leagueId}/users`),
     get<SleeperRoster[]>(`/league/${leagueId}/rosters`),
     get<Record<string, SleeperPlayer>>(`/players/nba`),
@@ -63,12 +75,17 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
     if (!team) continue;
     const u = r.owner_id ? userById.get(r.owner_id) : undefined;
     const name = u ? u.metadata?.team_name?.trim() || `Team ${u.display_name}` : team.name;
+    // Conference = the roster's Sleeper division (league.metadata.division_N).
+    const division = r.settings?.division;
+    const conference = conferenceName(division ? league.metadata?.[`division_${division}`] : undefined);
     const res = await sql`
       update teams set owner_name = ${u?.display_name ?? null},
                        sleeper_user_id = ${u?.user_id ?? null},
-                       name = ${name}
+                       name = ${name},
+                       conference = coalesce(${conference}, conference)
       where id = ${team.id}
-        and (owner_name is distinct from ${u?.display_name ?? null} or name <> ${name})
+        and (owner_name is distinct from ${u?.display_name ?? null} or name <> ${name}
+             or conference is distinct from coalesce(${conference}, conference))
       returning id`;
     teamsUpdated += res.length;
   }
@@ -104,6 +121,9 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
     where p.sleeper_id = r.sleeper_id and p.team_id is null
       and not exists (select 1 from contracts c where c.player_id = p.id)`;
 
+  // New draft years appear here; pick owners are only flagged until applied.
+  await seedPicks(await sleeperPicks(leagueId));
+
   const issues = await checkRosters(leagueId, rosters);
   return { teamsUpdated, playersAdded, issues };
 }
@@ -131,7 +151,7 @@ export async function checkRosters(leagueId: string, rosters?: SleeperRoster[]):
            exists (select 1 from contracts c where c.player_id = p.id) as has_contract
     from players p where p.sleeper_id = any(${[...rostered.keys()]}) or p.team_id is not null`;
 
-  const issues: { kind: string; player_id: number; team_id: number | null; detail: string }[] = [];
+  const issues: { kind: string; player_id: number | null; team_id: number | null; detail: string }[] = [];
   for (const p of book) {
     const sleeperTeam = p.sleeper_id ? rostered.get(p.sleeper_id) : undefined;
     if (sleeperTeam != null && !p.has_contract) {
@@ -150,6 +170,8 @@ export async function checkRosters(leagueId: string, rosters?: SleeperRoster[]):
     }
   }
 
+  issues.push(...(await pickDifferences(await sleeperPicks(leagueId))));
+
   await sql.transaction([
     sql`delete from sync_issues`,
     sql`insert into sync_issues (kind, player_id, team_id, detail)
@@ -161,6 +183,7 @@ export async function checkRosters(leagueId: string, rosters?: SleeperRoster[]):
 
 export interface ApplyResult {
   moved: { player: string; from: string; to: string }[];
+  picksMoved: MovedPick[];
   released: string[];
   joined: string[];
   tradesUndone: number;
@@ -198,7 +221,7 @@ export async function applySleeperRosters(leagueId: string, currentSeason: numbe
     select id, sleeper_id, name, team_id from players
     where team_id is not null or sleeper_id = any(${[...rostered.keys()]})`;
 
-  const result: ApplyResult = { moved: [], released: [], joined: [], tradesUndone: 0 };
+  const result: ApplyResult = { moved: [], picksMoved: [], released: [], joined: [], tradesUndone: 0 };
   const movedIds: number[] = [];
   const q = [];
   for (const p of book) {
@@ -221,6 +244,11 @@ export async function applySleeperRosters(leagueId: string, currentSeason: numbe
     await sql.transaction(q);
   }
 
+  result.picksMoved = await applyPicks(await sleeperPicks(leagueId));
+  if (result.picksMoved.length) {
+    await sql`insert into audit_log (action, detail) values ('sleeper_picks_applied', ${JSON.stringify(result.picksMoved)})`;
+  }
+
   // Site trades this sync fully reversed: every player is back with the team
   // that sent him, and at least one of them was moved just now (a trade
   // reversed by a later site trade is left alone). Mark them undone and drop
@@ -228,10 +256,20 @@ export async function applySleeperRosters(leagueId: string, currentSeason: numbe
   const reversed = await sql`
     select tr.id from trades tr
     where tr.status = 'approved'
-      and exists (select 1 from trade_items ti where ti.trade_id = tr.id and ti.player_id = any(${movedIds}))
+      and exists (
+        select 1 from trade_items ti where ti.trade_id = tr.id
+          and (ti.player_id = any(${movedIds})
+               or (ti.kind = 'pick' and (ti.pick_season, ti.pick_round, ti.pick_original) in (
+                 select * from unnest(${result.picksMoved.map((m) => m.season)}::int[],
+                                      ${result.picksMoved.map((m) => m.round)}::int[],
+                                      ${result.picksMoved.map((m) => m.originalTeam)}::int[])))))
       and not exists (
         select 1 from trade_items ti join players p on p.id = ti.player_id
-        where ti.trade_id = tr.id and p.team_id is distinct from ti.from_team)`;
+        where ti.trade_id = tr.id and p.team_id is distinct from ti.from_team)
+      and not exists (
+        select 1 from trade_items ti join draft_picks d
+          on d.season = ti.pick_season and d.round = ti.pick_round and d.original_team = ti.pick_original
+        where ti.trade_id = tr.id and ti.kind = 'pick' and d.owner_team <> ti.from_team)`;
   for (const t of reversed) {
     await sql.transaction([
       sql`update trades set status = 'undone', decided_at = now() where id = ${t.id}`,

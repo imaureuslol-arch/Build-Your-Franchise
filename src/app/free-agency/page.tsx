@@ -266,7 +266,7 @@ export default function FreeAgencyPage() {
   if (loading || offersLoading) return <div className="flex items-center justify-center h-96 text-text-muted">Loading data...</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       <h1 className="text-4xl mb-6">Free Agency Tracker</h1>
       {loadError && <p role="alert" className="mb-4 text-sm text-cap-over">{loadError} <button className="underline" onClick={refreshOffers}>Retry</button></p>}
       {round && <FreeAgencySchedule round={round} now={now} canManage={canClear} bids={offerHistory} awards={awards} refresh={refreshOffers} />}
@@ -299,11 +299,11 @@ export default function FreeAgencyPage() {
                       <div className="flex items-baseline gap-2 min-w-0">
                         <span className="font-medium text-sm truncate">{player.name}</span>
                         {player.ppg != null && (
-                          <span className="text-[10px] text-text-dim font-mono shrink-0">{player.ppg.toFixed(1)}</span>
+                          <span className="text-xs text-text-dim font-mono shrink-0">{player.ppg.toFixed(1)}</span>
                         )}
                       </div>
                       {playerOffers && playerOffers[0] && (
-                        <span className="bg-primary/15 text-primary text-[11px] px-1 font-semibold shrink-0 ml-2 font-mono">
+                        <span className="bg-primary/15 text-primary text-xs px-1 font-semibold shrink-0 ml-2 font-mono">
                           {formatSalary(getWeightedValue(playerOffers[0]))}
                         </span>
                       )}
@@ -435,7 +435,7 @@ export default function FreeAgencyPage() {
         {/* Offer Log */}
         <div className="lg:col-span-1">
           <div className="bg-surface rounded-sm border border-border overflow-hidden">
-            <div className="p-4 border-b border-border font-bold text-sm">Offer Log</div>
+            <h3 className="px-4 py-3 border-b border-border text-lg">Offer Log</h3>
             <div className="max-h-[600px] overflow-y-auto">
               {playerIdsWithOffers.map((pId) => {
                 const offers = offersByPlayer.get(pId)!;
@@ -451,7 +451,7 @@ export default function FreeAgencyPage() {
                         <span>{top.playerName}</span>
                         <span className="text-primary">{offers.length} Bids</span>
                       </div>
-                      <div className="text-[10px] text-text-dim mt-1">
+                      <div className="text-xs text-text-dim mt-1">
                         Top: {formatSalary(getWeightedValue(top))} weighted
                         <span className="text-text-dim/60"> · {formatSalary(top.totalValue)} total</span>
                       </div>
@@ -459,7 +459,7 @@ export default function FreeAgencyPage() {
                     {isViewing && (
                       <div className="p-4 bg-surface-light space-y-2 border-t border-border/30">
                         {offers.map((o) => (
-                          <div key={o.id} className="text-[10px] border-b border-border/20 pb-1.5 last:border-0 space-y-0.5">
+                          <div key={o.id} className="text-xs border-b border-border/20 pb-1.5 last:border-0 space-y-0.5">
                             <div className="flex justify-between font-bold">
                               <span>{o.userName}</span>
                               <span>{formatSalary(getWeightedValue(o))}</span>
@@ -480,7 +480,7 @@ export default function FreeAgencyPage() {
                         ))}
                         {canClear && biddingOpen && <button
                           onClick={() => handleClear(pId)}
-                          className="w-full py-1 text-[10px] text-cap-over font-bold uppercase hover:underline"
+                          className="w-full py-1 text-xs text-cap-over font-bold uppercase hover:underline"
                         >
                           Clear Bids
                         </button>}
@@ -499,7 +499,7 @@ export default function FreeAgencyPage() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-sm p-6 max-w-sm w-full border border-border">
             <h3 className="font-bold text-primary mb-4">Bid Formatted</h3>
-            <pre className="bg-surface-light p-4 rounded-sm text-[10px] font-mono whitespace-pre-wrap mb-4">
+            <pre className="bg-surface-light p-4 rounded-sm text-xs font-mono whitespace-pre-wrap mb-4">
               {getOfferCopyText(copiedOffer)}
             </pre>
             <button

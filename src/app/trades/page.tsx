@@ -6,7 +6,7 @@ import { Suspense, useState, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
-import { Player, FREE_AGENCY_TEAM, getCurrentSalary } from "@/lib/types";
+import { Player, FREE_AGENCY_TEAM, getCurrentSalary, isPick } from "@/lib/types";
 import TeamTradeColumn from "@/components/TeamTradeColumn";
 import TradeSidebar from "@/components/TradeSidebar";
 import TradeProposals, { type TradeView } from "@/components/TradeProposals";
@@ -57,6 +57,17 @@ function TradesPage() {
     setOpenTrades(data.open);
     setHistory(data.history);
   }, []);
+
+  // Draft picks, as salary-free entries owned by their current team.
+  const [picks, setPicks] = useState<Player[]>([]);
+  const loadPicks = useCallback(async () => {
+    const res = await fetch("/api/picks");
+    if (res.ok) setPicks((await res.json()).picks);
+  }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadPicks();
+  }, [loadPicks]);
 
   useEffect(() => {
     loadTrades();
@@ -111,8 +122,8 @@ function TradesPage() {
   const usedTeams = slots.map((s) => s.team).filter(Boolean);
 
   const getTeamPlayers = useCallback(
-    (team: string) => rostered.filter((p) => p.team === team),
-    [rostered]
+    (team: string) => [...rostered.filter((p) => p.team === team), ...picks.filter((p) => p.team === team)],
+    [rostered, picks]
   );
 
   const getPlayersIn = useCallback(
@@ -233,7 +244,7 @@ function TradesPage() {
     for (const p of incoming) {
       const fv = playerValues[p.id]?.fairValue;
       if (fv == null) {
-        if (p.name !== "Dead Cap") missingFV.push(p.name);
+        if (p.name !== "Dead Cap" && !isPick(p)) missingFV.push(p.name);
       } else {
         fvSum += fv * 1_000_000;
       }
@@ -354,13 +365,13 @@ function TradesPage() {
 
       <TradeProposals trades={openTrades} myTeam={myTeam} isCommish={isCommish} onChange={loadTrades} />
 
-      <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 -mx-3 sm:mx-0 px-3 sm:px-0 snap-x snap-mandatory sm:snap-none">
+      <div className="flex flex-col md:flex-row gap-4 md:overflow-x-auto pb-4">
         {slots.map((slot, i) => {
           const otherTeams = slots
             .filter((s, j) => j !== i && s.team)
             .map((s) => s.team);
           return (
-            <div key={i} className="flex-1 min-w-[260px] sm:min-w-[280px] snap-start">
+            <div key={i} className="md:flex-1 md:min-w-[280px]">
               <TeamTradeColumn
                 teamName={slot.team}
                 allTeams={allTeams.filter((t) => t === slot.team || !usedTeams.includes(t))}
@@ -442,7 +453,7 @@ function TradesPage() {
                       />
                     </div>
                     {tv.missingFV.length > 0 && (
-                      <p className="text-[10px] text-text-dim mt-1">
+                      <p className="text-xs text-text-dim mt-1">
                         No fair value for: {tv.missingFV.join(", ")}
                       </p>
                     )}
