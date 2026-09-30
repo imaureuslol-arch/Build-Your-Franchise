@@ -1,39 +1,40 @@
 @import "tailwindcss";
 
 /*
- * Box-score look: newsprint paper, black ink, one court-orange accent.
+ * Box-score look: neutral paper, black ink, one blue accent. Kept neutral
+ * (no warm tint) so it holds up under night-light / blue-light filters.
  * Tokens are CSS variables so dark mode is a variable swap, not a second
  * set of classes. Numbers use the mono face so salary columns line up.
  */
 :root {
-  --paper: #f3efe6;
-  --sheet: #fbf9f4;
-  --sheet-2: #ebe5d8;
-  --rule: #d3cbbb;
-  --ink: #17150f;
-  --ink-2: #57513f;
-  --ink-3: #8b8472;
-  --orange: #c4491a;
-  --orange-2: #a63c14;
-  --good: #2c7a4b;
-  --warn: #a86b12;
-  --bad: #b3261e;
+  --paper: #f6f6f5;
+  --sheet: #ffffff;
+  --sheet-2: #ececeb;
+  --rule: #d6d6d4;
+  --ink: #161616;
+  --ink-2: #555553;
+  --ink-3: #8a8a87;
+  --accent: #2f5bd3;
+  --accent-2: #2449b0;
+  --good: #2f7a52;
+  --warn: #9a6a14;
+  --bad: #b23a33;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #13110e;
-    --sheet: #1b1915;
-    --sheet-2: #25221d;
-    --rule: #37322a;
-    --ink: #ede7da;
-    --ink-2: #aaa290;
-    --ink-3: #726b5c;
-    --orange: #e0692f;
-    --orange-2: #f07b41;
-    --good: #4fae74;
-    --warn: #d9a03a;
-    --bad: #e2574c;
+    --paper: #121212;
+    --sheet: #1a1a1a;
+    --sheet-2: #242424;
+    --rule: #333333;
+    --ink: #e6e6e6;
+    --ink-2: #a3a3a3;
+    --ink-3: #6e6e6e;
+    --accent: #7b9dff;
+    --accent-2: #97b2ff;
+    --good: #5fb585;
+    --warn: #d1a653;
+    --bad: #e07a73;
   }
 }
 
@@ -42,9 +43,9 @@
   --color-surface: var(--sheet);
   --color-surface-light: var(--sheet-2);
   --color-border: var(--rule);
-  --color-primary: var(--orange);
-  --color-primary-hover: var(--orange-2);
-  --color-accent: var(--orange);
+  --color-primary: var(--accent);
+  --color-primary-hover: var(--accent-2);
+  --color-accent: var(--accent);
   --color-warning: var(--warn);
   --color-danger: var(--bad);
   --color-text: var(--ink);
@@ -97,7 +98,7 @@ body {
 }
 
 ::selection {
-  background: var(--orange);
+  background: var(--accent);
   color: #fff;
 }
 
