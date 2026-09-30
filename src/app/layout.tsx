@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono, Barlow_Condensed } from "next/font/google";
+import { IBM_Plex_Sans, IBM_Plex_Mono, Barlow_Condensed, Graduate } from "next/font/google";
 import "./globals.css";
 import Nav from "@/components/Nav";
 import { UserTeamProvider } from "@/lib/user-context";
@@ -20,6 +20,13 @@ const barlowCondensed = Barlow_Condensed({
   variable: "--font-barlow-condensed",
   subsets: ["latin"],
   weight: ["600", "700", "800"],
+  style: ["normal", "italic"],
+});
+
+const graduate = Graduate({
+  variable: "--font-graduate",
+  subsets: ["latin"],
+  weight: "400",
 });
 
 export const metadata: Metadata = {
@@ -35,7 +42,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plexSans.variable} ${plexMono.variable} ${barlowCondensed.variable} h-full antialiased`}
+      className={`${plexSans.variable} ${plexMono.variable} ${barlowCondensed.variable} ${graduate.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <UserTeamProvider>

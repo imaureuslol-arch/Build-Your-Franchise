@@ -38,7 +38,7 @@ export default function Nav() {
     <select
       value={teamName ?? ""}
       onChange={(e) => impersonate(e.target.value)}
-      className="bg-transparent border border-border px-1.5 py-0.5 text-xs text-text-muted focus:outline-none focus:border-text"
+      className="bg-purple-deep border border-white/20 px-1.5 py-0.5 text-xs text-white/70 focus:outline-none focus:border-white"
       title="View the site as another team"
     >
       <option value="" disabled>View as…</option>
@@ -49,12 +49,12 @@ export default function Nav() {
   );
 
   return (
-    <header className="border-b-2 border-text bg-background">
+    <header className="masthead">
       {/* Top strip: who you are */}
-      <div className="border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 h-8 flex items-center justify-end gap-3 text-xs text-text-muted">
+      <div className="border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 h-8 flex items-center justify-end gap-3 text-xs text-white/60">
           {viewAs && <span className="hidden sm:inline">{viewAs}</span>}
-          <Link href="/account" className="hover:text-text hover:underline truncate">
+          <Link href="/account" className="hover:text-white hover:underline truncate">
             {who}
           </Link>
         </div>
@@ -64,7 +64,7 @@ export default function Nav() {
         <Link
           href="/"
           onClick={() => setMenuOpen(false)}
-          className="font-blocky font-extrabold uppercase text-3xl sm:text-4xl leading-none tracking-tight pb-2.5 whitespace-nowrap"
+          className="font-varsity uppercase text-2xl sm:text-3xl leading-none pb-3 whitespace-nowrap"
         >
           Build Your Franchise
         </Link>
@@ -76,10 +76,10 @@ export default function Nav() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`font-blocky font-bold uppercase text-lg leading-none pb-2.5 border-b-4 -mb-[2px] transition-colors ${
+                className={`font-blocky font-extrabold italic uppercase text-lg leading-none pb-3 border-b-4 transition-colors ${
                   active
-                    ? "border-primary text-text"
-                    : "border-transparent text-text-muted hover:text-text"
+                    ? "border-teal text-white"
+                    : "border-transparent text-white/60 hover:text-white"
                 }`}
               >
                 {link.label}
@@ -93,22 +93,22 @@ export default function Nav() {
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((v) => !v)}
-          className="md:hidden font-blocky font-bold uppercase text-lg pb-2.5 text-text-muted hover:text-text"
+          className="md:hidden font-blocky font-extrabold italic uppercase text-lg pb-3 text-white/70 hover:text-white"
         >
           {menuOpen ? "Close" : "Menu"}
         </button>
       </div>
 
       {menuOpen && (
-        <nav className="md:hidden border-t border-border">
+        <nav className="md:hidden border-t border-white/10">
           <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setMenuOpen(false)}
-                className={`font-blocky font-bold uppercase text-xl py-2 border-b border-border last:border-0 ${
-                  pathname === link.href ? "text-primary" : "text-text"
+                className={`font-blocky font-extrabold italic uppercase text-xl py-2 border-b border-white/10 last:border-0 ${
+                  pathname === link.href ? "text-teal" : "text-white"
                 }`}
               >
                 {link.label}
@@ -118,6 +118,7 @@ export default function Nav() {
           </div>
         </nav>
       )}
+      <div className="masthead-stripe" />
     </header>
   );
 }

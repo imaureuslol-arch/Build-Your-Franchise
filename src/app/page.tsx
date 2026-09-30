@@ -83,24 +83,24 @@ export default function HomePage() {
         </dl>
       </div>
 
-      <table className="w-full text-sm border-t-2 border-text">
+      <table className="w-full text-sm card-frame">
         <thead>
-          <tr className="text-left font-blocky uppercase text-text-muted border-b border-text">
-            <th className="py-1.5 pr-2 w-8 font-bold">#</th>
-            <th className="py-1.5 pr-4 font-bold">Team</th>
-            <th className="py-1.5 pr-4 font-bold hidden md:table-cell">Owner</th>
-            <th className="py-1.5 pr-4 font-bold text-right hidden sm:table-cell">Pl</th>
-            <th className="py-1.5 pr-4 font-bold text-right">Payroll</th>
-            <th className="py-1.5 pr-4 font-bold text-right hidden sm:table-cell">To soft cap</th>
-            <th className="py-1.5 font-bold hidden lg:table-cell w-[32%]"></th>
+          <tr className="card-head text-left font-blocky italic uppercase">
+            <th className="py-2 pl-3 pr-2 w-10 font-extrabold">#</th>
+            <th className="py-2 pr-4 font-extrabold">Team</th>
+            <th className="py-2 pr-4 font-extrabold hidden md:table-cell">Owner</th>
+            <th className="py-2 pr-4 font-extrabold text-right hidden sm:table-cell">Pl</th>
+            <th className="py-2 pr-4 font-extrabold text-right">Payroll</th>
+            <th className="py-2 pr-4 font-extrabold text-right hidden sm:table-cell">To soft cap</th>
+            <th className="py-2 pr-3 font-bold hidden lg:table-cell w-[32%]"></th>
           </tr>
         </thead>
         <tbody>
           {teams.map((t, i) => {
             const room = soft - t.total;
             return (
-              <tr key={t.team} className="border-b border-border hover:bg-surface-light">
-                <td className="py-2 pr-2 font-mono text-text-dim">{i + 1}</td>
+              <tr key={t.team} className="border-b border-border last:border-0 even:bg-surface-light/50 hover:bg-surface-light">
+                <td className="py-2 pl-3 pr-2 font-mono text-text-dim">{i + 1}</td>
                 <td className="py-2 pr-4 font-semibold">
                   <Link href={`/rosters?team=${encodeURIComponent(t.team)}`} className="hover:underline">
                     {t.team}
@@ -114,7 +114,7 @@ export default function HomePage() {
                 <td className="py-2 pr-4 font-mono text-right hidden sm:table-cell">
                   {room >= 0 ? formatSalary(room) : <span className="text-cap-over">−{formatSalary(-room)}</span>}
                 </td>
-                <td className="py-2 hidden lg:table-cell">
+                <td className="py-2 pr-3 hidden lg:table-cell">
                   <div className="relative h-2.5 bg-surface-light">
                     <div
                       className={`absolute inset-y-0 left-0 ${statusBar[t.status]}`}

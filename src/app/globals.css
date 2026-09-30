@@ -1,40 +1,46 @@
 @import "tailwindcss";
 
 /*
- * Box-score look: neutral paper, black ink, one blue accent. Kept neutral
- * (no warm tint) so it holds up under night-light / blue-light filters.
- * Tokens are CSS variables so dark mode is a variable swap, not a second
- * set of classes. Numbers use the mono face so salary columns line up.
+ * 90s NBA / trading-card look: teal, purple and black (expansion-era
+ * Hornets/Raptors), varsity lettering, heavy italic headings with a slanted
+ * two-colour stripe, tables framed like the back of a card. All cool hues,
+ * so it holds up under night-light / blue-light filters.
  */
 :root {
-  --paper: #f6f6f5;
+  --paper: #eeecf3;
   --sheet: #ffffff;
-  --sheet-2: #ececeb;
-  --rule: #d6d6d4;
-  --ink: #161616;
-  --ink-2: #555553;
-  --ink-3: #8a8a87;
-  --accent: #2f5bd3;
-  --accent-2: #2449b0;
-  --good: #2f7a52;
-  --warn: #9a6a14;
-  --bad: #b23a33;
+  --sheet-2: #e5e1ee;
+  --rule: #cbc4da;
+  --ink: #17111f;
+  --ink-2: #4c4260;
+  --ink-3: #82799a;
+  --teal: #0e8a82;
+  --teal-2: #0a7169;
+  --teal-hi: #0e8a82;
+  --purple: #5a2d9c;
+  --purple-deep: #251245;
+  --good: #1d8248;
+  --warn: #946500;
+  --bad: #bf2f45;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #121212;
-    --sheet: #1a1a1a;
-    --sheet-2: #242424;
-    --rule: #333333;
-    --ink: #e6e6e6;
-    --ink-2: #a3a3a3;
-    --ink-3: #6e6e6e;
-    --accent: #7b9dff;
-    --accent-2: #97b2ff;
-    --good: #5fb585;
-    --warn: #d1a653;
-    --bad: #e07a73;
+    --paper: #110d18;
+    --sheet: #1b1526;
+    --sheet-2: #261d35;
+    --rule: #3a2f4d;
+    --ink: #f0ecf7;
+    --ink-2: #b1a6c6;
+    --ink-3: #786e8f;
+    --teal: #129a90;
+    --teal-2: #17b0a4;
+    --teal-hi: #38d0c3;
+    --purple: #7446c2;
+    --purple-deep: #22113f;
+    --good: #5fd28e;
+    --warn: #f0c04e;
+    --bad: #ff6f86;
   }
 }
 
@@ -43,9 +49,12 @@
   --color-surface: var(--sheet);
   --color-surface-light: var(--sheet-2);
   --color-border: var(--rule);
-  --color-primary: var(--accent);
-  --color-primary-hover: var(--accent-2);
-  --color-accent: var(--accent);
+  --color-primary: var(--teal);
+  --color-primary-hover: var(--teal-2);
+  --color-accent: var(--teal-hi);
+  --color-teal: var(--teal-hi);
+  --color-purple: var(--purple);
+  --color-purple-deep: var(--purple-deep);
   --color-warning: var(--warn);
   --color-danger: var(--bad);
   --color-text: var(--ink);
@@ -57,6 +66,7 @@
   --font-sans: var(--font-plex-sans);
   --font-mono: var(--font-plex-mono);
   --font-blocky: var(--font-barlow-condensed);
+  --font-varsity: var(--font-graduate);
   --radius-sm: 2px;
 }
 
@@ -71,21 +81,64 @@ body {
   font-feature-settings: "tnum";
 }
 
-/* Headings read like a stats page: condensed, upper case, tight. In the
-   base layer so a page's own text-* classes still win. */
+/* In the base layer so a page's own text-* classes still win. */
 @layer base {
   h1,
   h2,
   h3 {
     font-family: var(--font-blocky), var(--font-sans);
-    font-weight: 700;
+    font-weight: 800;
+    font-style: italic;
     text-transform: uppercase;
     letter-spacing: 0.01em;
     line-height: 1.05;
   }
   h1 {
-    font-size: 2.25rem;
+    font-size: 2.5rem;
   }
+  /* The slanted teal/purple stripe under every page title. */
+  h1::after {
+    content: "";
+    display: block;
+    width: 4.5rem;
+    height: 7px;
+    margin-top: 0.4rem;
+    background: linear-gradient(90deg, var(--teal-hi) 0 58%, transparent 58% 64%, var(--purple) 64% 100%);
+    transform: skewX(-24deg);
+    transform-origin: left;
+  }
+}
+
+/* Masthead: deep purple with diagonal pinstripes, like a warm-up jacket. */
+.masthead {
+  background:
+    repeating-linear-gradient(-55deg, transparent 0 14px, rgb(255 255 255 / 0.035) 14px 16px),
+    var(--purple-deep);
+  color: #fff;
+}
+.masthead-stripe {
+  height: 8px;
+  background: linear-gradient(90deg, var(--teal-hi) 0 70%, var(--purple) 70% 100%);
+}
+
+/* Header row of a card-back stat table. */
+.card-head {
+  background: var(--purple-deep);
+  color: #fff;
+}
+@media (prefers-color-scheme: light) {
+  .card-head {
+    background: var(--purple);
+  }
+}
+
+/* Trading-card frame: a solid edge, and a teal rule under the header band. */
+.card-frame {
+  background: var(--sheet);
+  border: 2px solid var(--ink);
+}
+.card-frame .card-head {
+  border-bottom: 3px solid var(--teal-hi);
 }
 
 /* Prevent iOS zoom on input focus */
@@ -98,7 +151,7 @@ body {
 }
 
 ::selection {
-  background: var(--accent);
+  background: var(--teal);
   color: #fff;
 }
 
@@ -125,7 +178,7 @@ input[type="range"]::-webkit-slider-thumb {
   appearance: none;
   width: 14px;
   height: 20px;
-  background: var(--ink);
+  background: var(--teal-hi);
   cursor: pointer;
 }
 input[type="range"]::-moz-range-thumb {
@@ -133,6 +186,6 @@ input[type="range"]::-moz-range-thumb {
   height: 20px;
   border: 0;
   border-radius: 0;
-  background: var(--ink);
+  background: var(--teal-hi);
   cursor: pointer;
 }

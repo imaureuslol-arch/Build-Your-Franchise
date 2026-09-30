@@ -27,7 +27,10 @@ export default function RostersPage() {
   const loading = pLoading || oLoading;
   const router = useRouter();
 
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  // /rosters?team=X (from the home page) opens that team's card.
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("team")
+  );
   const [conferenceFilter, setConferenceFilter] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [showPlayerResults, setShowPlayerResults] = useState(false);
@@ -210,21 +213,24 @@ export default function RostersPage() {
         </span>
       </div>
 
-      {/* Grid with self-start so expanded cards don't push siblings */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+      {/* An open card takes the full row; dense flow lets later cards fill the gap. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 grid-flow-row-dense gap-4 items-start">
         {filteredTeams.map((team) => (
           <div
             key={team.team}
-            className={`bg-surface rounded-sm border cursor-pointer transition-all hover:border-primary/50 ${
-              selectedTeam === team.team ? "border-primary ring-1 ring-primary/30" : "border-border"
+            className={`card-frame cursor-pointer transition-transform hover:-translate-y-0.5 ${
+              selectedTeam === team.team ? "md:col-span-2 lg:col-span-3" : ""
             }`}
             onClick={() =>
               setSelectedTeam(selectedTeam === team.team ? null : team.team)
             }
           >
+            <div className="card-head px-4 py-2 flex items-baseline justify-between gap-2">
+              <h2 className="text-xl truncate">{team.team}</h2>
+              {team.userName && <span className="text-xs text-white/60 truncate">{team.userName}</span>}
+            </div>
             <div className="p-4">
               <div className="flex items-center justify-between mb-1">
-                <h2 className="font-bold text-lg">{team.team}</h2>
                 <span
                   className={`text-xs px-1.5 py-0.5 border font-mono ${capStatusBg[team.capStatus]}`}
                 >
@@ -233,11 +239,6 @@ export default function RostersPage() {
                   </span>
                 </span>
               </div>
-              {team.userName && (
-                <p className="text-xs text-text-dim mb-2">
-                  Owner: {team.userName}
-                </p>
-              )}
               <div className="flex items-baseline justify-between">
                 <span className="text-text-muted text-sm">
                   {team.players.length} players
@@ -286,11 +287,11 @@ export default function RostersPage() {
               <div className="border-t border-border overflow-x-auto">
                 <table className="w-full text-sm min-w-[480px]">
                   <thead>
-                    <tr className="text-text-dim text-xs">
-                      <th className="text-left px-4 py-2 font-medium">Player</th>
+                    <tr className="card-head text-xs font-blocky italic uppercase">
+                      <th className="text-left px-4 py-2 font-extrabold">Player</th>
                       {SALARY_YEARS.map((y) => (
-                        <th key={y} className="text-right px-2 py-2 font-medium">
-                          {y}
+                        <th key={y} className="text-right px-2 py-2 font-extrabold">
+                          &apos;{String(y).slice(2)}
                         </th>
                       ))}
                     </tr>
@@ -299,7 +300,7 @@ export default function RostersPage() {
                     {team.players.map((player) => (
                       <tr
                         key={player.name}
-                        className="border-t border-border/50 hover:bg-surface-light/50"
+                        className="border-t border-border/50 even:bg-surface-light/50 hover:bg-surface-light"
                       >
                         <td className="px-4 py-2 font-medium">{player.name}</td>
                         {SALARY_YEARS.map((y) => (
