@@ -1,30 +1,41 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSupabase } from "./supabase";
-import { Player, TeamOwner, parsePlayer } from "./types";
+import type { Player, TeamOwner } from "./types";
+
+interface League {
+  players: Player[];
+  owners: TeamOwner[];
+}
+
+// One /api/league request per page load, shared by every hook that needs it.
+let leaguePromise: Promise<League> | null = null;
+
+function loadLeague(): Promise<League> {
+  if (!leaguePromise) {
+    leaguePromise = fetch("/api/league")
+      .then((r) => {
+        if (!r.ok) throw new Error(`league: ${r.status}`);
+        return r.json() as Promise<League>;
+      })
+      .catch((e) => {
+        console.error("Error fetching league:", e);
+        leaguePromise = null;
+        return { players: [], owners: [] };
+      });
+  }
+  return leaguePromise;
+}
 
 export function usePlayers() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetch() {
-      const { data, error } = await getSupabase()
-        .from("players")
-        .select("*")
-        .order("name");
-
-      if (error) {
-        console.error("Error fetching players:", error);
-        setLoading(false);
-        return;
-      }
-
-      setPlayers(data.map(parsePlayer));
+    loadLeague().then((l) => {
+      setPlayers(l.players);
       setLoading(false);
-    }
-    fetch();
+    });
   }, []);
 
   return { players, loading };
@@ -35,25 +46,10 @@ export function useTeamOwners() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetch() {
-      const { data, error } = await getSupabase()
-        .from("team_owners")
-        .select("*");
-
-      if (error) {
-        console.error("Error fetching team owners:", error);
-        setLoading(false);
-        return;
-      }
-
-      const map = new Map<string, TeamOwner>();
-      for (const row of data as TeamOwner[]) {
-        map.set(row.team_name, row);
-      }
-      setOwners(map);
+    loadLeague().then((l) => {
+      setOwners(new Map(l.owners.map((o) => [o.team_name, o])));
       setLoading(false);
-    }
-    fetch();
+    });
   }, []);
 
   return { owners, loading };

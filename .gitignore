@@ -36,8 +36,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-# cloudflare / opennext
-.open-next
 .wrangler
 .dev.vars
 
@@ -47,3 +45,7 @@ next-env.d.ts
 
 # claude code local settings
 .claude/settings.local.json
+
+# V2 import working files (league data, old database backup)
+/scripts/v2-import/*
+!/scripts/v2-import/import.mjs

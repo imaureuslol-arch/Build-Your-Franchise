@@ -1,14 +1,3 @@
-import type { PlayersRow } from "./database.types";
-
-/**
- * A row straight out of the `players` table.
- *
- * This used to declare a `user_name` column that the table doesn't actually
- * have (nothing read it — `parsePlayer` ignored it), and to omit `birthdate`,
- * which it does have. Aliasing the generated row type keeps the two in sync.
- */
-export type PlayerRaw = PlayersRow;
-
 export interface Player {
   id: number;
   name: string;
@@ -64,24 +53,25 @@ export interface ChatMessage {
 export const SALARY_YEARS = [2027, 2028, 2029, 2030] as const;
 export type SalaryYear = (typeof SALARY_YEARS)[number];
 
-export const HARD_CAP_BASE = 250_000_000;
-export const SOFT_CAP_BASE = 225_000_000;
+// From the league's Salary Cap sheet (2026-27 season).
+export const HARD_CAP_BASE = 240_000_000;
+export const SOFT_CAP_BASE = 215_000_000;
 const CAP_BASE_YEAR = 2027;
-const CAP_INCREASE_PER_YEAR = 25_000_000;
+const CAP_INCREASE_PER_YEAR = 25_000_000 / 3;
 const FAIR_VALUE_GROWTH_RATE = 0.05; // 5% per year
 
-/** Hard cap for a given season year ($250M in 2027, +$25M/yr from 2028) */
+/** Hard cap for a given season year ($240M in 2027, +$8.33M/yr) */
 export function getHardCap(year?: number): number {
   const y = year ?? getCurrentSeasonYear();
   const yearsAfterBase = Math.max(0, y - CAP_BASE_YEAR);
-  return HARD_CAP_BASE + yearsAfterBase * CAP_INCREASE_PER_YEAR;
+  return Math.round(HARD_CAP_BASE + yearsAfterBase * CAP_INCREASE_PER_YEAR);
 }
 
-/** Soft cap for a given season year ($225M in 2027, +$25M/yr from 2028) */
+/** Soft cap for a given season year ($215M in 2027, +$8.33M/yr) */
 export function getSoftCap(year?: number): number {
   const y = year ?? getCurrentSeasonYear();
   const yearsAfterBase = Math.max(0, y - CAP_BASE_YEAR);
-  return SOFT_CAP_BASE + yearsAfterBase * CAP_INCREASE_PER_YEAR;
+  return Math.round(SOFT_CAP_BASE + yearsAfterBase * CAP_INCREASE_PER_YEAR);
 }
 
 /** Inflate a base fair value (current season) to a future year at 5%/yr */
@@ -125,32 +115,6 @@ export const DEAD_CAP_NAME = "Dead Cap";
 /** Returns true if the player is a Dead Cap entry */
 export function isDeadCap(player: { name: string }): boolean {
   return player.name === DEAD_CAP_NAME;
-}
-
-/** Parse "$42,000,000" -> 42000000, or null. Supports negatives like "-$5,000,000" */
-export function parseSalary(value: string | null): number | null {
-  if (!value) return null;
-  const negative = value.trim().startsWith("-");
-  const cleaned = value.replace(/[-$,]/g, "").trim();
-  const num = Number(cleaned);
-  if (isNaN(num)) return null;
-  return negative ? -num : num;
-}
-
-/** Convert a raw DB row into a Player with numeric salaries */
-export function parsePlayer(raw: PlayerRaw): Player {
-  return {
-    id: raw.id,
-    // name/team are nullable in Postgres, though in practice never null.
-    name: raw.name ?? "",
-    team: raw.team ?? "",
-    contract_27: parseSalary(raw.contract_27),
-    contract_28: parseSalary(raw.contract_28),
-    contract_29: parseSalary(raw.contract_29),
-    contract_30: parseSalary(raw.contract_30),
-    ppg: raw.ppg,
-    avg_gp: raw.avg_gp,
-  };
 }
 
 export function getTeamTotalCap(players: Player[]): number {

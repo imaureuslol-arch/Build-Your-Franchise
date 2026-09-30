@@ -3,9 +3,8 @@
 export const dynamic = "force-dynamic";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { usePlayers, useTeamOwners } from "@/lib/hooks";
+import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
-import { getSupabase } from "@/lib/supabase";
 import {
   Player,
   FREE_AGENCY_TEAM,
@@ -75,12 +74,12 @@ function rowToOffer(row: FAOfferRow): FAOffer {
 
 export default function FreeAgencyPage() {
   const { players, loading: pLoading } = usePlayers();
-  const { owners, loading: oLoading } = useTeamOwners();
-  const { owner: myOwner, isLoading: teamLoading } = useUserTeam();
-  const loading = pLoading || oLoading || teamLoading;
+  const { owner: myOwner, isLoading: teamLoading, isWhitelisted, isSubCommish } = useUserTeam();
+  const canClear = isWhitelisted || isSubCommish;
+  const loading = pLoading || teamLoading;
 
   const [searchQuery, setSearchQuery] = useState("");
-  // selectedUser is derived from the IP-locked identity — not freely choosable
+  // Bids are placed as the logged-in team; the server checks this too
   const selectedUser = myOwner?.user_name ?? "";
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [offerYears, setOfferYears] = useState<number[]>([]);
@@ -91,44 +90,23 @@ export default function FreeAgencyPage() {
   const [offersLoading, setOffersLoading] = useState(true);
   const [viewingPlayerId, setViewingPlayerId] = useState<string | null>(null);
 
-  // --- Password Protection State ---
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [playerToClear, setPlayerToClear] = useState<string | null>(null);
-  const ADMIN_PASSWORD = "stoplookinginthefilesasshole"; // Change your password here
-
   const refreshOffers = useCallback(async () => {
-    const { data, error } = await getSupabase()
-      .from("free_agent_offers")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.error("Failed to load free-agent offers:", error);
-      setOffersLoading(false);
-      return;
+    try {
+      const res = await fetch("/api/free-agent-offers");
+      const data = await res.json();
+      if (res.ok) setOfferHistory((data.offers as FAOfferRow[]).map(rowToOffer));
+    } catch (e) {
+      console.error("Failed to load free-agent offers:", e);
     }
-    setOfferHistory((data as FAOfferRow[]).map(rowToOffer));
     setOffersLoading(false);
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshOffers();
-
-    // Realtime: refresh the list whenever any user inserts or deletes an offer
-    const channel = getSupabase()
-      .channel("free_agent_offers_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "free_agent_offers" },
-        () => {
-          refreshOffers();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      getSupabase().removeChannel(channel);
-    };
+    // Other owners' bids show up within 15 seconds.
+    const timer = setInterval(refreshOffers, 15_000);
+    return () => clearInterval(timer);
   }, [refreshOffers]);
 
   const myTeamCap = useMemo(() => {
@@ -146,12 +124,6 @@ export default function FreeAgencyPage() {
       .sort((a, b) => (b.ppg ?? -1) - (a.ppg ?? -1)),
     [players]
   );
-
-  const userList = useMemo(() => {
-    return Array.from(owners.values())
-      .map((o) => ({ userName: o.user_name, teamName: o.team_name }))
-      .sort((a, b) => a.userName.localeCompare(b.userName));
-  }, [owners]);
 
   const filteredFreeAgents = searchQuery
     ? freeAgents.filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -196,7 +168,7 @@ export default function FreeAgencyPage() {
 
   function getOfferErrors(): string[] {
     const errors: string[] = [];
-    if (!selectedUser) errors.push("Select your name");
+    if (!selectedUser) errors.push("Open your login link to bid");
     if (!selectedPlayer) errors.push("Select a player");
     if (offerYears.length === 0) errors.push("Select at least one year");
 
@@ -224,32 +196,21 @@ export default function FreeAgencyPage() {
     const currentErrors = getOfferErrors();
     if (currentErrors.length > 0 || !selectedPlayer) return;
 
-    const ownerEntry = userList.find((u) => u.userName === selectedUser);
     const amounts: { [year: number]: number } = {};
     for (const y of offerYears) amounts[y] = isOverHardCap ? MIN_OFFER_PER_YEAR : yearAmounts[y];
-    const totalValue = offerYears.reduce((s, y) => s + amounts[y], 0);
 
-    const { data, error } = await getSupabase()
-      .from("free_agent_offers")
-      .insert({
-        player_id: String(selectedPlayer.id),
-        player_name: selectedPlayer.name,
-        user_name: selectedUser,
-        team_name: ownerEntry?.teamName || "",
-        years: [...offerYears],
-        amounts,
-        total_value: totalValue,
-      })
-      .select()
-      .single();
-
-    if (error || !data) {
-      console.error("Failed to submit offer:", error);
-      alert("Failed to submit offer. Please try again.");
+    const res = await fetch("/api/free-agent-offers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ player_id: selectedPlayer.id, years: [...offerYears], amounts }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.offer) {
+      alert(data?.error ?? "Failed to submit offer. Please try again.");
       return;
     }
 
-    const offer = rowToOffer(data as FAOfferRow);
+    const offer = rowToOffer({ ...(data.offer as FAOfferRow), user_name: myOwner?.user_name ?? "" });
     // Optimistic update; realtime subscription will also fire
     setOfferHistory((prev) =>
       prev.some((o) => o.id === offer.id) ? prev : [offer, ...prev]
@@ -261,34 +222,15 @@ export default function FreeAgencyPage() {
     setSelectedPlayer(null);
   }
 
-  // --- Password Logic ---
-  function handleRequestClear(playerId: string) {
-    setPlayerToClear(playerId);
-    setShowPasswordModal(true);
-  }
-
-  async function handleConfirmClear() {
-    if (passwordInput !== ADMIN_PASSWORD || !playerToClear) {
-      alert("Incorrect Password");
-      return;
-    }
-
-    const { error } = await getSupabase()
-      .from("free_agent_offers")
-      .delete()
-      .eq("player_id", playerToClear);
-
-    if (error) {
-      console.error("Failed to clear offers:", error);
+  async function handleClear(playerId: string) {
+    if (!confirm("Clear every bid on this player?")) return;
+    const res = await fetch(`/api/free-agent-offers?player_id=${playerId}`, { method: "DELETE" });
+    if (!res.ok) {
       alert("Failed to clear offers. Please try again.");
       return;
     }
-
-    setOfferHistory((prev) => prev.filter((o) => o.playerId !== playerToClear));
-    if (viewingPlayerId === playerToClear) setViewingPlayerId(null);
-    setShowPasswordModal(false);
-    setPasswordInput("");
-    setPlayerToClear(null);
+    setOfferHistory((prev) => prev.filter((o) => o.playerId !== playerId));
+    if (viewingPlayerId === playerId) setViewingPlayerId(null);
   }
 
   function getOfferCopyText(offer: FAOffer): string {
@@ -511,12 +453,12 @@ export default function FreeAgencyPage() {
                             </div>
                           </div>
                         ))}
-                        <button 
-                          onClick={() => handleRequestClear(pId)}
+                        {canClear && <button
+                          onClick={() => handleClear(pId)}
                           className="w-full py-1 text-[10px] text-cap-over font-bold uppercase hover:underline"
                         >
                           Clear Bids
-                        </button>
+                        </button>}
                       </div>
                     )}
                   </div>
@@ -548,41 +490,6 @@ export default function FreeAgencyPage() {
         </div>
       )}
 
-      {/* --- Password Modal --- */}
-      {showPasswordModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
-          <div className="bg-surface rounded-xl p-6 max-w-xs w-full border border-border">
-            <h3 className="font-bold text-white mb-2">Admin Required</h3>
-            <p className="text-xs text-text-dim mb-4">Enter password to clear bids for this player.</p>
-            <input 
-              type="password"
-              autoFocus
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleConfirmClear()}
-              className="w-full bg-surface-light border border-border rounded px-3 py-2 text-sm outline-none mb-4 text-white"
-              placeholder="Password"
-            />
-            <div className="flex gap-2">
-              <button 
-                onClick={handleConfirmClear}
-                className="flex-1 py-2 bg-cap-over text-white rounded font-bold text-xs"
-              >
-                Clear
-              </button>
-              <button 
-                onClick={() => {
-                  setShowPasswordModal(false);
-                  setPasswordInput("");
-                }}
-                className="flex-1 py-2 bg-surface-light text-text-muted rounded font-bold text-xs"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

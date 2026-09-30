@@ -20,73 +20,42 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Login / PIN setup
+## V2 setup
 
-Owners log in by picking their team and entering a 4-digit PIN. On success the
-server whitelists their IP (`ip_team_mappings`) **and** issues a signed
-`HttpOnly` session cookie, so they're never asked again on that device. The
-cookie is what keeps them logged in when their home IP changes, and what keeps
-two owners behind one carrier NAT from overwriting each other's mapping.
+Data lives in Neon Postgres. Sleeper is the source for teams, owners and
+rosters; the contract book (salaries, dead cap, extensions) lives only here.
 
-### One-time setup
+### Environment variables
 
-1. Run [`scripts/pins-schema.sql`](scripts/pins-schema.sql) in the Supabase SQL
-   editor (creates `team_pins`, `pin_attempts`, adds `ip_login_history.success`).
-2. Set these env vars locally in `.env.local` **and** in the Vercel project
-   settings (Production + Preview):
+Set in `.env.local` and in the host's project settings:
 
-   | Variable | Value |
-   | --- | --- |
-   | `SESSION_SECRET` | Long random string. Generate with `openssl rand -hex 32`. Changing it logs everyone out. |
-   | `COMMISSIONER_PIN` | Your 8-digit commissioner PIN |
-   | `SUBCOMMISSIONER_PIN` | The 6-digit sub-commissioner PIN |
-   | `SUPABASE_SERVICE_ROLE_KEY` | **Required** — `team_pins` / `pin_attempts` are RLS-locked and unreadable with the anon key, so logins fail without it |
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Neon connection string (pooled) |
+| `SLEEPER_LEAGUE_ID` | `1339222801806024704` |
+| `CRON_SECRET` | Long random string; Vercel Cron sends it to the daily sync |
 
-3. Put each team's 4-digit PIN in `TEAM_PINS` at the top of
-   [`scripts/set-pins.mjs`](scripts/set-pins.mjs), then run `node scripts/set-pins.mjs`.
-   Only the PBKDF2 hash is stored. Re-run any time to reset a PIN.
+### First run
 
-### Testing locally
+1. `psql "$DATABASE_URL" -f db/schema.sql` (or paste it into the Neon SQL editor)
+2. `node scripts/v2-import/import.mjs` builds teams, players and contracts from
+   the sheet export + Sleeper, and writes `scripts/v2-import/to-review.csv`
+3. `node scripts/make-link.mjs commish <site-url> "<your team name>"` prints
+   your commissioner login link
 
-`next dev` has no proxy headers, so every local request looks like the same
-client. Set `DEV_FAKE_IP` in `.env.local` to whatever IP you want to pretend to
-be, and restart the dev server to switch identities:
+### Logins
 
-```
-DEV_FAKE_IP=10.0.0.1
-```
+Each owner gets a personal link from **Commissioner → Login Links**; send it
+in a Sleeper DM. Opening it logs that device in for a year. Owners add other
+devices from **Account** (one-time link, 10 minutes). "New link" replaces a
+team's link; "Log out all" ends every device of that team.
 
-To get back to a clean "never logged in" state, clear the server-side record
-and the cookie:
+### Sleeper sync
 
-```sql
-delete from ip_team_mappings where ip = '10.0.0.1';  -- your DEV_FAKE_IP
-delete from pin_attempts;                            -- clears any lockout
-```
-
-then delete the `byf_session` cookie (devtools → Application → Cookies) or just
-open a new incognito window.
-
-### Notes
-
-- Team PIN length is 4 digits, so brute force is held off by a lockout: 5 wrong
-  PINs from one IP inside 15 minutes returns `429` until the window passes.
-- Commissioner PINs are entered on `/commissioner`; 8 digits grants full
-  commish, 6 digits grants sub-commish. A correct PIN adds the IP to
-  `commissioner_ips` / `subcommissioner_ips`.
-- "Log out" in the commissioner tools deletes the team's IP rows *and* bumps
-  `team_pins.session_epoch`, which invalidates that team's session cookies too.
-- To revoke a commissioner device, delete its row from `commissioner_ips` and
-  rotate `SESSION_SECRET`.
-- Anyone already mapped in `ip_team_mappings` before PINs existed stays logged
-  in without ever entering one. To force the whole league to authenticate once,
-  run `delete from ip_team_mappings;` after seeding the PINs.
-- RLS is intentionally left **off** on every pre-existing table so the external
-  Excel sync keeps working. Only the two new tables (`team_pins`,
-  `pin_attempts`) are locked, because a readable 4-digit PIN hash or a writable
-  lockout counter would defeat the login outright. The tradeoff is that the PIN
-  stops honest users, not someone who pulls the anon key out of the JS bundle
-  and writes their own row into `ip_team_mappings`.
+**Commissioner → Sleeper Sync → Sync now**, and daily at 09:00 UTC via
+Vercel Cron (`vercel.json`, authorised by `CRON_SECRET`).
+It updates owners and team names and adds new players automatically. Roster
+differences that affect contracts are listed for the commissioner, not applied.
 
 ## Learn More
 

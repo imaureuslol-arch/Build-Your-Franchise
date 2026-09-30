@@ -37,17 +37,21 @@ export default function Nav() {
             onClick={() => setMenuOpen(false)}
             className="text-base sm:text-xl font-bold text-primary tracking-tight whitespace-nowrap"
           >
-            SLEEPER COMPANION
+            BUILD YOUR FRANCHISE
           </Link>
 
           {/* Desktop links */}
           <div className="hidden md:flex items-center gap-2 lg:gap-3">
-            {teamName && (
-              <span className="text-xs text-text-muted hidden lg:inline">
-                <span className="text-text-dim">Playing as</span>{" "}
-                <span className="text-accent font-semibold">{owner?.user_name ?? teamName}</span>
-              </span>
-            )}
+            <Link href="/account" className="text-xs text-text-muted hidden lg:inline hover:underline">
+              {teamName ? (
+                <>
+                  <span className="text-text-dim">Playing as</span>{" "}
+                  <span className="text-accent font-semibold">{owner?.user_name ?? teamName}</span>
+                </>
+              ) : (
+                <span className="text-text-dim">{isWhitelisted || isSubCommish ? "Commissioner" : "Not logged in"}</span>
+              )}
+            </Link>
             {isWhitelisted && allTeams.length > 0 && (
               <select
                 value={teamName ?? ""}
@@ -117,12 +121,20 @@ export default function Nav() {
       {menuOpen && (
         <div className="md:hidden border-t border-border bg-surface">
           <div className="px-4 py-3 flex flex-col gap-1">
-            {teamName && (
-              <div className="text-xs text-text-muted pb-2 mb-1 border-b border-border">
-                <span className="text-text-dim">Playing as</span>{" "}
-                <span className="text-accent font-semibold">{owner?.user_name ?? teamName}</span>
-              </div>
-            )}
+            <Link
+              href="/account"
+              onClick={() => setMenuOpen(false)}
+              className="text-xs text-text-muted pb-2 mb-1 border-b border-border"
+            >
+              {teamName ? (
+                <>
+                  <span className="text-text-dim">Playing as</span>{" "}
+                  <span className="text-accent font-semibold">{owner?.user_name ?? teamName}</span>
+                </>
+              ) : (
+                <span className="text-text-dim">{isWhitelisted || isSubCommish ? "Commissioner" : "Not logged in"}</span>
+              )}
+            </Link>
             {isWhitelisted && allTeams.length > 0 && (
               <select
                 value={teamName ?? ""}

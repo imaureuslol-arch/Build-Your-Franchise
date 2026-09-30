@@ -1,45 +1,22 @@
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "@/lib/db";
 import { calcFairValue, ageFromBirthdate } from "@/lib/fair-value";
-
-function getSupabaseServer() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(url, key, { auth: { persistSession: false } });
-}
 
 /**
  * GET /api/player-values
- * Returns { values: Record<number, { fairValue, age }> } for all rostered players
- * that have ppg, avg_gp, and birthdate.
+ * Returns { values: Record<number, { fairValue, age }> } for every player
+ * that has ppg, avg_gp, and birthdate.
  */
 export async function GET() {
-  const supabase = getSupabaseServer();
-
-  const { data, error } = await supabase
-    .from("players")
-    .select("id, name, ppg, avg_gp, birthdate")
-    .not("ppg", "is", null)
-    .not("avg_gp", "is", null)
-    .not("birthdate", "is", null);
-
-  if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
-  }
+  const rows = await sql`
+    select id, ppg, avg_gp, birthdate::text as birthdate from players
+    where ppg is not null and avg_gp is not null and birthdate is not null`;
 
   const values: Record<number, { fairValue: number; age: number }> = {};
-
-  for (const row of data) {
-    if (row.name === "Dead Cap") continue;
+  for (const row of rows) {
     const age = ageFromBirthdate(row.birthdate);
     if (age == null) continue;
-
     const fv = calcFairValue(age, row.ppg, row.avg_gp);
-    values[row.id] = {
-      fairValue: Math.round(fv * 10) / 10,
-      age,
-    };
+    values[row.id] = { fairValue: Math.round(fv * 10) / 10, age };
   }
 
   return Response.json({ values });

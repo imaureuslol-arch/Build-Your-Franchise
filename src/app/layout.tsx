@@ -21,7 +21,7 @@ const barlowCondensed = Barlow_Condensed({
 });
 
 export const metadata: Metadata = {
-  title: "Sleeper Companion",
+  title: "Build Your Franchise",
   description: "Mock trades, extensions, and roster viewer for your Sleeper league",
 };
 

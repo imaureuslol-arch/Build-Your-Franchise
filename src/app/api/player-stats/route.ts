@@ -1,32 +1,15 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "@/lib/db";
 import { calcFairValue, ageFromBirthdate } from "@/lib/fair-value";
-
-function getSupabaseServer() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(url, key, { auth: { persistSession: false } });
-}
 
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name");
   if (!name) return Response.json({ error: "name required" }, { status: 400 });
 
-  const supabase = getSupabaseServer();
-  const { data: dbPlayer, error: dbError } = await supabase
-    .from("players")
-    .select("ppg, avg_gp, birthdate")
-    .eq("name", name)
-    .maybeSingle();
-
-  if (dbError) {
-    return Response.json(
-      { error: `Database error: ${dbError.message}` },
-      { status: 500 }
-    );
-  }
+  const rows = await sql`
+    select ppg, avg_gp, birthdate::text as birthdate from players
+    where name = ${name} order by team_id nulls last limit 1`;
+  const dbPlayer = rows[0];
 
   const ppg: number | null = dbPlayer?.ppg ?? null;
   const avgGamesPlayed: number | null = dbPlayer?.avg_gp ?? null;
