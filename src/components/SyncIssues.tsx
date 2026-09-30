@@ -33,13 +33,30 @@ export default function SyncIssues() {
   }, [load]);
 
   async function run() {
+    const moving = issues.filter((i) => i.kind === "wrong_team").length;
+    const releasing = issues.filter((i) => i.kind === "not_on_sleeper_roster").length;
+    if (
+      (moving || releasing) &&
+      !confirm(
+        `Make the site match Sleeper? ${moving} player${moving === 1 ? "" : "s"} will move to their Sleeper team` +
+          ` and ${releasing} will be released (contract erased). Site trades that Sleeper doesn't have are undone.`
+      )
+    ) return;
     setRunning(true);
     setMsg(null);
     const res = await fetch("/api/commissioner/sync", { method: "POST" });
     const data = await res.json().catch(() => ({}));
     setMsg(
       res.ok
-        ? `Synced: ${data.teamsUpdated} team changes, ${data.playersAdded} new players, ${data.issues} issues, stats for ${data.statsUpdated} players (${data.statsSeason}).`
+        ? [
+            data.applied?.moved?.length
+              ? `Moved: ${data.applied.moved.map((m: { player: string; from: string; to: string }) => `${m.player} (${m.from} → ${m.to})`).join(", ")}.`
+              : "",
+            data.applied?.released?.length ? `Released: ${data.applied.released.join(", ")}.` : "",
+            data.applied?.joined?.length ? `Joined without a contract: ${data.applied.joined.join(", ")}.` : "",
+            data.applied?.tradesUndone ? `${data.applied.tradesUndone} site trade(s) undone.` : "",
+            `${data.issues} issue(s) left; stats for ${data.statsUpdated} players (${data.statsSeason}).`,
+          ].filter(Boolean).join(" ")
         : data.error ?? "Sync failed."
     );
     await load();
@@ -57,7 +74,7 @@ export default function SyncIssues() {
           disabled={running}
           className="text-xs px-2.5 py-1 rounded-sm border border-border hover:bg-surface-light disabled:opacity-40"
         >
-          {running ? "Syncing…" : "Sync now"}
+          {running ? "Syncing…" : "Sync to Sleeper"}
         </button>
       </div>
       {msg && <p className="text-xs text-text-muted">{msg}</p>}

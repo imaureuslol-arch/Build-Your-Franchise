@@ -1,6 +1,6 @@
 import { sql } from "@/lib/db";
 import { audit, forbidden, getViewer, isAnyCommish } from "@/lib/auth";
-import { checkRosters, syncFromSleeper } from "@/lib/sleeper-sync";
+import { applySleeperRosters, checkRosters, syncFromSleeper } from "@/lib/sleeper-sync";
 import { syncStats } from "@/lib/stats-sync";
 import { refreshFairValues } from "@/lib/valuation";
 import { getCurrentSeasonYear } from "@/lib/types";
@@ -23,7 +23,11 @@ export async function GET() {
   return Response.json({ issues });
 }
 
-/** POST — run the Sleeper sync now. The daily run is /api/cron/sleeper-sync. */
+/**
+ * POST — "Sync now": pull Sleeper, make rosters match it (moving, releasing
+ * and undoing trades as needed), then refresh stats and values. The daily
+ * run (/api/cron/sleeper-sync) does everything except moving players.
+ */
 export async function POST() {
   const viewer = await getViewer();
   if (!isAnyCommish(viewer)) return forbidden();
@@ -32,9 +36,11 @@ export async function POST() {
   if (!leagueId) return Response.json({ error: "SLEEPER_LEAGUE_ID is not set" }, { status: 500 });
 
   const rosters = await syncFromSleeper(leagueId);
+  // "Sync now" makes the book match Sleeper; the nightly run only flags.
+  const applied = await applySleeperRosters(leagueId, getCurrentSeasonYear());
   const stats = await syncStats(leagueId);
   const valued = await refreshFairValues(getCurrentSeasonYear());
-  const result = { ...rosters, statsUpdated: stats.updated, statsSeason: stats.season, valued };
+  const result = { ...rosters, applied, issues: await sql`select count(*)::int as n from sync_issues`.then((r) => r[0].n), statsUpdated: stats.updated, statsSeason: stats.season, valued };
   await audit(viewer, "sleeper_sync", result);
   return Response.json(result);
 }

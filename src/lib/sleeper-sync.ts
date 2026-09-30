@@ -158,3 +158,89 @@ export async function checkRosters(leagueId: string, rosters?: SleeperRoster[]):
   ]);
   return issues.length;
 }
+
+export interface ApplyResult {
+  moved: { player: string; from: string; to: string }[];
+  released: string[];
+  joined: string[];
+  tradesUndone: number;
+}
+
+/**
+ * Make the book match Sleeper's rosters. Sleeper is the authority: trades
+ * made directly in Sleeper arrive here, and a trade approved on the site but
+ * never made in Sleeper is reverted, which is how an approval is undone.
+ *
+ *   on another team in Sleeper   moves there, contract and all
+ *   on no Sleeper roster         released: contract for this season and
+ *                                later erased, no dead cap
+ *   picked up, not in the book   joins the team with no contract (flagged)
+ *
+ * A site trade whose players have all been put back where they started is
+ * marked 'undone' and the retained salary it booked is removed. Every change
+ * is written to the audit log. Only "Sync now" calls this; the nightly run
+ * only flags differences.
+ */
+export async function applySleeperRosters(leagueId: string, currentSeason: number): Promise<ApplyResult> {
+  const rosters = await get<SleeperRoster[]>(`/league/${leagueId}/rosters`);
+  const teams = await sql`select id, sleeper_roster, name from teams`;
+  const teamByRoster = new Map(teams.map((t) => [t.sleeper_roster as number, t.id as number]));
+  const teamName = new Map(teams.map((t) => [t.id as number, t.name as string]));
+
+  const rostered = new Map<string, number>(); // sleeper_id -> team id
+  for (const r of rosters) {
+    const team = teamByRoster.get(r.roster_id);
+    if (team == null) continue;
+    for (const pid of r.players ?? []) rostered.set(pid, team);
+  }
+
+  const book = await sql`
+    select id, sleeper_id, name, team_id from players
+    where team_id is not null or sleeper_id = any(${[...rostered.keys()]})`;
+
+  const result: ApplyResult = { moved: [], released: [], joined: [], tradesUndone: 0 };
+  const movedIds: number[] = [];
+  const q = [];
+  for (const p of book) {
+    const target = p.sleeper_id ? rostered.get(p.sleeper_id) : undefined;
+    if (target != null && p.team_id != null && target !== p.team_id) {
+      q.push(sql`update players set team_id = ${target} where id = ${p.id}`);
+      movedIds.push(p.id);
+      result.moved.push({ player: p.name, from: teamName.get(p.team_id)!, to: teamName.get(target)! });
+    } else if (target == null && p.team_id != null) {
+      q.push(sql`update players set team_id = null where id = ${p.id}`);
+      q.push(sql`delete from contracts where player_id = ${p.id} and season >= ${currentSeason}`);
+      result.released.push(`${p.name} (${teamName.get(p.team_id)})`);
+    } else if (target != null && p.team_id == null) {
+      q.push(sql`update players set team_id = ${target} where id = ${p.id}`);
+      result.joined.push(`${p.name} (${teamName.get(target)})`);
+    }
+  }
+  if (q.length) {
+    q.push(sql`insert into audit_log (action, detail) values ('sleeper_rosters_applied', ${JSON.stringify(result)})`);
+    await sql.transaction(q);
+  }
+
+  // Site trades this sync fully reversed: every player is back with the team
+  // that sent him, and at least one of them was moved just now (a trade
+  // reversed by a later site trade is left alone). Mark them undone and drop
+  // the retention they booked.
+  const reversed = await sql`
+    select tr.id from trades tr
+    where tr.status = 'approved'
+      and exists (select 1 from trade_items ti where ti.trade_id = tr.id and ti.player_id = any(${movedIds}))
+      and not exists (
+        select 1 from trade_items ti join players p on p.id = ti.player_id
+        where ti.trade_id = tr.id and p.team_id is distinct from ti.from_team)`;
+  for (const t of reversed) {
+    await sql.transaction([
+      sql`update trades set status = 'undone', decided_at = now() where id = ${t.id}`,
+      sql`delete from dead_cap where trade_id = ${t.id}`,
+      sql`insert into audit_log (action, detail) values ('trade_undone_by_sleeper', ${JSON.stringify({ id: t.id })})`,
+    ]);
+  }
+  result.tradesUndone = reversed.length;
+
+  await checkRosters(leagueId, rosters);
+  return result;
+}

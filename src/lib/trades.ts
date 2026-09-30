@@ -170,10 +170,10 @@ export async function executeTrade(tradeId: string): Promise<string[]> {
         .filter((i) => i.from === share.from && i.to === receiver.team && i.playerId > 0)
         .map((i) => check.players.get(i.playerId)!.name)
         .join(", ");
-      q.push(sql`insert into dead_cap (team_id, label, season, amount)
-                 values (${check.teamIds.get(share.from)!}, ${`Retained: ${names}`}, ${season}, ${share.amount})`);
-      q.push(sql`insert into dead_cap (team_id, label, season, amount)
-                 values (${check.teamIds.get(receiver.team)!}, ${`Retention credit: ${names}`}, ${season}, ${-share.amount})`);
+      q.push(sql`insert into dead_cap (team_id, label, season, amount, trade_id)
+                 values (${check.teamIds.get(share.from)!}, ${`Retained: ${names}`}, ${season}, ${share.amount}, ${tradeId})`);
+      q.push(sql`insert into dead_cap (team_id, label, season, amount, trade_id)
+                 values (${check.teamIds.get(receiver.team)!}, ${`Retention credit: ${names}`}, ${season}, ${-share.amount}, ${tradeId})`);
     }
   }
   q.push(sql`update trades set status = 'approved', decided_at = now() where id = ${tradeId}`);
