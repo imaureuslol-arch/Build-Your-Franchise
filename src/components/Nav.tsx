@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useUserTeam } from "@/lib/user-context";
 import { useTeamOwners } from "@/lib/hooks";
 
@@ -19,6 +19,36 @@ export default function Nav() {
   const { teamName, owner, isWhitelisted, isSubCommish, impersonate } = useUserTeam();
   const { owners } = useTeamOwners();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [tradesWaiting, setTradesWaiting] = useState(0);
+
+  // Trades waiting on this viewer: checked on load, every minute, when the
+  // tab comes back into focus, and whenever a trade is answered on the page.
+  useEffect(() => {
+    const check = () =>
+      fetch("/api/trades/pending")
+        .then((r) => (r.ok ? r.json() : { count: 0 }))
+        .then((d) => setTradesWaiting(d.count ?? 0))
+        .catch(() => {});
+    check();
+    const timer = setInterval(check, 60_000);
+    window.addEventListener("focus", check);
+    window.addEventListener("byf-trades-changed", check);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("byf-trades-changed", check);
+    };
+  }, []);
+
+  const badge = (href: string) =>
+    href === "/trades" && tradesWaiting > 0 ? (
+      <span
+        className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-teal text-purple-deep text-xs font-bold not-italic align-middle font-sans"
+        aria-label={`${tradesWaiting} trade${tradesWaiting === 1 ? "" : "s"} waiting for you`}
+      >
+        {tradesWaiting}
+      </span>
+    ) : null;
 
   const links =
     isWhitelisted || isSubCommish
@@ -83,6 +113,7 @@ export default function Nav() {
                 }`}
               >
                 {link.label}
+                {badge(link.href)}
               </Link>
             );
           })}
@@ -96,6 +127,7 @@ export default function Nav() {
           className="md:hidden font-blocky font-extrabold italic uppercase text-lg pb-3 text-white/70 hover:text-white"
         >
           {menuOpen ? "Close" : "Menu"}
+          {!menuOpen && badge("/trades")}
         </button>
       </div>
 
@@ -112,6 +144,7 @@ export default function Nav() {
                 }`}
               >
                 {link.label}
+                {badge(link.href)}
               </Link>
             ))}
             {viewAs && <div className="py-2">{viewAs}</div>}

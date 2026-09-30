@@ -70,6 +70,7 @@ export default function TradeProposals({ trades, myTeam, isCommish, onChange }: 
     setErrors((e) => ({ ...e, [id]: res.ok ? [] : data.errors ?? [data.error ?? "That didn't work."] }));
     setBusy(null);
     if (res.ok) {
+      window.dispatchEvent(new Event("byf-trades-changed"));
       onChange();
       if (action === "approve") window.location.reload();
     }
