@@ -24,6 +24,8 @@ interface PlayerStats {
 interface ExtensionRecord {
   id: string;
   player_id: number;
+  owner_key: string;
+  contract_version: number;
   player_name: string;
   team_name: string;
   user_name: string;
@@ -58,7 +60,10 @@ export default function ExtensionsPage() {
   }, [fetchExtensions]);
 
   const loading = playersLoading || teamLoading || extensionsLoading;
-  const lockedPlayerIds = new Set(extensions.map((e) => e.player_id));
+  const lockedPlayerIds = new Set(extensions.filter(e =>
+    (e.accepted || e.owner_key === owner?.owner_key) &&
+    allPlayers.find(p => p.id === e.player_id)?.contractVersion === e.contract_version
+  ).map(e => e.player_id));
 
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);

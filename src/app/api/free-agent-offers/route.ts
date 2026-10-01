@@ -5,8 +5,15 @@ import { adminError, validId } from '@/lib/admin-errors';
 import { getCurrentSeasonYear } from '@/lib/types';
 
 export async function GET() {
+  await sql`select byf_refresh_rfas(${getCurrentSeasonYear()}::int)`;
   const [row] = await sql`select jsonb_build_object(
     'round', to_jsonb(r), 'serverNow', clock_timestamp(),
+    'auctions', coalesce((select jsonb_agg(a) from (
+      select a.*, t.name as rfa_team_name, matched.name as matched_team_name from fa_player_auctions a
+      left join teams t on coalesce('sleeper:' || t.sleeper_user_id, 'team:' || t.id) = a.rfa_owner_key
+      left join teams matched on matched.id = a.matched_team_id where a.round_id = r.id) a), '[]'),
+    'restrictedPlayers', coalesce((select jsonb_agg(jsonb_build_object('player_id',rf.player_id,'owner_key',rf.owner_key,'team_name',t.name))
+      from restricted_free_agents rf left join teams t on coalesce('sleeper:' || t.sleeper_user_id,'team:' || t.id)=rf.owner_key), '[]'),
     'offers', coalesce((select jsonb_agg(b order by b.created_at, b.id) from (
       select o.*, p.name as player_name,
         coalesce(t.owner_name, t.name) as user_name, t.name as team_name

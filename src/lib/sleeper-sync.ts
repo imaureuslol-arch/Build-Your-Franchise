@@ -37,6 +37,7 @@ interface SleeperPlayer {
   team?: string | null;
   birth_date?: string | null;
   active?: boolean;
+  years_exp?: number | null;
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -98,12 +99,14 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
   const names = wanted.map(([, p]) => p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim());
   const nbaTeams = wanted.map(([, p]) => p.team ?? null);
   const births = wanted.map(([, p]) => p.birth_date || null);
+  const experience = wanted.map(([, p]) => Number.isSafeInteger(p.years_exp) && p.years_exp! >= 0 ? p.years_exp! : null);
   const inserted = await sql`
-    insert into players (sleeper_id, name, nba_team, birthdate)
-    select * from unnest(${ids}::text[], ${names}::text[], ${nbaTeams}::text[], ${births}::date[])
+    insert into players (sleeper_id, name, nba_team, birthdate, nba_experience)
+    select * from unnest(${ids}::text[], ${names}::text[], ${nbaTeams}::text[], ${births}::date[], ${experience}::int[])
     on conflict (sleeper_id) do update
       set nba_team = excluded.nba_team,
           birthdate = coalesce(players.birthdate, excluded.birthdate)
+          , nba_experience = coalesce(excluded.nba_experience, players.nba_experience)
     returning (xmax = 0) as inserted`;
   const playersAdded = inserted.filter((r) => r.inserted).length;
 
@@ -199,6 +202,7 @@ export interface ApplyResult {
  * only flags differences.
  */
 export async function applySleeperRosters(leagueId: string, currentSeason: number): Promise<ApplyResult> {
+  await sql`select byf_refresh_rfas(${currentSeason}::int)`;
   const rosters = await get<SleeperRoster[]>(`/league/${leagueId}/rosters`);
   const teams = await sql`select id, sleeper_roster, name from teams`;
   const teamByRoster = new Map(teams.map((t) => [t.sleeper_roster as number, t.id as number]));
@@ -212,7 +216,9 @@ export async function applySleeperRosters(leagueId: string, currentSeason: numbe
   }
 
   const book = await sql`
-    select id, sleeper_id, name, team_id from players
+    select id, sleeper_id, name, team_id,
+      exists(select 1 from restricted_free_agents r where r.player_id=players.id) as restricted
+    from players
     where team_id is not null or sleeper_id = any(${[...rostered.keys()]})`;
 
   const result: ApplyResult = { moved: [], picksMoved: [], released: [], joined: [], tradesUndone: 0 };
@@ -228,7 +234,7 @@ export async function applySleeperRosters(leagueId: string, currentSeason: numbe
       q.push(sql`update players set team_id = null where id = ${p.id}`);
       q.push(sql`delete from contracts where player_id = ${p.id} and season >= ${currentSeason}`);
       result.released.push(`${p.name} (${teamName.get(p.team_id)})`);
-    } else if (target != null && p.team_id == null) {
+    } else if (target != null && p.team_id == null && !p.restricted) {
       q.push(sql`update players set team_id = ${target} where id = ${p.id}`);
       result.joined.push(`${p.name} (${teamName.get(target)})`);
     }

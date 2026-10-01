@@ -6,12 +6,15 @@ export interface Player {
   salaries: Record<number, number>;
   ppg: number | null;
   avg_gp: number | null;
+  nbaExperience?: number | null;
+  contractVersion?: number;
 }
 
 export interface TeamOwner {
   team_name: string;
   user_name: string;
   conference: string | null;
+  owner_key?: string;
 }
 
 export interface TeamSummary {
@@ -180,7 +183,7 @@ export function formatSalary(amount: number | null): string {
 }
 
 export function isEligibleForExtension(player: Player): boolean {
-  if (isDeadCap(player)) return false;
+  if (isDeadCap(player) || player.nbaExperience == null || player.nbaExperience === 0) return false;
   return getExtensionYears(player).length > 0 && getCurrentSalary(player) != null;
 }
 

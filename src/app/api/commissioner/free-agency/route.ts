@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!body || !validId(body.roundId) || !['deadline', 'new_round', 'award', 'dismiss'].includes(body.action)) {
     return Response.json({ error: 'Invalid free-agency action.' }, { status: 400 });
   }
-  if (['deadline', 'new_round'].includes(body.action) && (typeof body.closesAt !== 'string' || !Number.isFinite(Date.parse(body.closesAt)))) {
+  if (body.action === 'deadline' && (typeof body.closesAt !== 'string' || !Number.isFinite(Date.parse(body.closesAt)))) {
     return Response.json({ error: 'Choose a date and time.' }, { status: 400 });
   }
   if (['award', 'dismiss'].includes(body.action) && !validId(body.playerId)) {

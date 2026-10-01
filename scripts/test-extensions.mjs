@@ -95,7 +95,12 @@ let storedState = null;
 const signedContracts = [];
 const fakeSql = async (parts, ...values) => {
   const query = parts.join("?");
-  if (query.includes("from players p")) return [{ id: playerId, name: "Player", team_id: playerTeam, ppg: 15, avg_gp: 65, proj_fppg: 17, fair_value: 20, age: 30, gp: 65, owner_id: "owner" }];
+  if (query.includes("insert into extension_negotiations")) return [{ player_id: playerId }];
+  if (query.includes("select p.id")) return [{ id: playerId, name: "Player", team_id: playerTeam, ppg: 15, avg_gp: 65, proj_fppg: 17, fair_value: 20, age: 30, gp: 65, owner_id: "owner", nba_experience:5, contract_version:1 }];
+  if (query.includes("byf_extension_finish")) {
+    if (values[6]) for (const year of values[4]) signedContracts.push({year,amount:JSON.parse(values[5])[year]});
+    return [];
+  }
   if (query.includes("select 1 from extensions")) return [];
   if (query.includes("from contracts")) return [{ season, amount: 10_000_000 }];
   if (query.includes("from extension_negotiations")) return storedState ? [storedState] : [];
@@ -110,6 +115,7 @@ const route = load("src/app/api/extensions/negotiate/route.ts", {
   "@/lib/auth": { getViewer: async () => viewer, notLoggedIn: () => Response.json({ error: "login" }, { status: 401 }), audit: async () => {} },
   "@/lib/extensions": extensions, "@/lib/types": types,
   "@/lib/extension-opening": { extensionOpening }, "@/lib/extension-dialogue": dialogue,
+  "@/lib/admin-errors": {adminError:() => Response.json({error:"conflict"},{status:409})},
 });
 const get = () => route.GET({ nextUrl: new URL(`http://test/api/extensions/negotiate?player_id=${playerId}`) });
 await test("GET never leaks a hidden ask or seed; reveal and restore survive device changes", async () => {

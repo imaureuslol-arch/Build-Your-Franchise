@@ -85,4 +85,24 @@ test("top 50 includes later teams; search yields progress", () => {
   const generator = findTrades([outgoing, ...many], [], scouts, {}, "A", [outgoing], { ...filters, rules: [], valueTolerance: null });
   assert.equal(generator.next().done, false);
 });
+test("every incoming player appears at most five times across different packages", () => {
+  const watson = {...p(200,"B",1,100),name:"Peyton Watson"};
+  const partners = Array.from({length:70},(_,i)=>p(201+i,"B",1,20));
+  const scouts = {...info};
+  for (const player of [watson,...partners]) scouts[player.id]={fairValue:10,age:23,positions:["SF"]};
+  const result = search([outgoing,watson,...partners],[],{playersMin:2,playersMax:2,rules:[],valueTolerance:null,sort:"fppg"},{},scouts);
+  assert.equal(result.filter(r=>r.assets.some(a=>a.id===watson.id)).length,5);
+  assert.equal(result.length,50);
+  const counts = new Map();
+  for (const match of result) for (const asset of match.assets) counts.set(asset.id,(counts.get(asset.id)??0)+1);
+  assert([...counts.values()].every(count=>count<=5));
+});
+test("the same player package with different picks appears only once, using the best-ranked offer", () => {
+  const extra = {...second,id:types.pickPlayerId(year+2,2,2),name:`${year+2} 2nd (B)`};
+  const values = {...pickValues,[extra.id]:{fairValue:9}};
+  const overrides = {playersMin:2,playersMax:2,picksMin:1,picksMax:1,rules:[],valueTolerance:null,sort:"value"};
+  const result = search([outgoing,youngHigh,oldHigh],[first,second,extra],overrides,values);
+  assert.equal(result.length,1);
+  assert(result[0].assets.some(a=>a.id===extra.id));
+});
 console.log(`${tests} Trade Finder checks passed.`);

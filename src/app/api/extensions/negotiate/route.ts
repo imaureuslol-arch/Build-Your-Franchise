@@ -12,6 +12,7 @@ import {
 import { getExtensionYears, getSalaryYears, type Player } from "@/lib/types";
 import { extensionOpening } from "@/lib/extension-opening";
 import { dialogueLine, finalDemandLine } from "@/lib/extension-dialogue";
+import { adminError } from "@/lib/admin-errors";
 
 /**
  * Extension negotiations, run entirely on the server.
@@ -33,6 +34,7 @@ type Loaded =
       age: number;
       fairValue: number;
       ownerKey: string;
+      contractVersion: number;
       stats: { fairValue: number; age: number; ppg: number; avgGamesPlayed: number | null };
       state: { offers_used: number; best_ratio: number; last_average: number; demand: number | null; demand_years: number[] | null } | null;
     };
@@ -40,15 +42,19 @@ type Loaded =
 async function load(viewer: Viewer, playerId: number): Promise<Loaded> {
   if (viewer.teamId == null) return { error: "Log in with your team link to negotiate.", status: 403 };
   const [row] = await sql`
-    select p.id, p.name, p.team_id, p.ppg, p.avg_gp, p.proj_fppg, p.fair_value,
+    select p.id, p.name, p.team_id, p.ppg, p.avg_gp, p.proj_fppg, p.fair_value, p.nba_experience, p.contract_version,
            coalesce(p.gp_override, p.avg_gp) as gp,
            date_part('year', age(p.birthdate))::int as age,
            t.sleeper_user_id as owner_id
     from players p left join teams t on t.id = p.team_id where p.id = ${playerId}`;
   if (!row || row.team_id !== viewer.teamId) return { error: "That player isn't on your team.", status: 403 };
 
-  const [done] = await sql`select 1 from extensions where player_id = ${playerId}`;
-  if (done) return { error: "This player already has an extension on record.", status: 409 };
+  if (row.nba_experience === 0) return {error:"Rookies cannot sign extensions.", status:409};
+  if (row.nba_experience == null) return {error:"NBA experience has not been synced for this player. Contact the commissioner.", status:409};
+  const ownerKey = row.owner_id != null ? `sleeper:${row.owner_id}` : `team:${viewer.teamId}`;
+  const [done] = await sql`select 1 from extensions where player_id = ${playerId} and contract_version = ${row.contract_version}
+    and (accepted or owner_key = ${ownerKey})`;
+  if (done) return { error: "This contract has already been extended or your negotiation is closed. A new contract signed in free agency restores eligibility.", status: 409 };
 
   const window = getSalaryYears();
   const contracts = await sql`
@@ -67,13 +73,14 @@ async function load(viewer: Viewer, playerId: number): Promise<Loaded> {
   const [state] = await sql`
     select offers_used, best_ratio, last_average::float8 as last_average,
            demand::float8 as demand, demand_years
-    from extension_negotiations where player_id = ${playerId}`;
+    from extension_negotiations where player_id = ${playerId} and owner_key = ${ownerKey} and contract_version = ${row.contract_version}`;
   return {
     player,
     years,
     age,
     fairValue: row.fair_value,
-    ownerKey: row.owner_id != null ? `sleeper:${row.owner_id}` : `team:${viewer.teamId}`,
+    ownerKey,
+    contractVersion: row.contract_version,
     stats: {
       fairValue: row.fair_value,
       age,
@@ -112,17 +119,9 @@ export async function GET(request: NextRequest) {
   return Response.json(view(l), { headers: { "Cache-Control": "private, no-store" } });
 }
 
-async function sign(viewer: Viewer, playerId: number, years: number[], amounts: Record<number, number>, accepted: boolean) {
-  const total = years.reduce((s, y) => s + (amounts[y] ?? 0), 0);
-  await sql.transaction([
-    sql`insert into extensions (player_id, team_id, years, amounts, total_value, accepted)
-        values (${playerId}, ${viewer.teamId}, ${years}, ${JSON.stringify(amounts)}, ${total}, ${accepted})`,
-    ...(accepted
-      ? years.map((y) => sql`insert into contracts (player_id, season, amount) values (${playerId}, ${y}, ${amounts[y]})
-                             on conflict (player_id, season) do update set amount = excluded.amount`)
-      : []),
-    sql`delete from extension_negotiations where player_id = ${playerId}`,
-  ]);
+async function sign(viewer: Viewer, l: Extract<Loaded, {player:Player}>, years: number[], amounts: Record<number, number>, accepted: boolean) {
+  await sql`select byf_extension_finish(${l.player.id}::int, ${viewer.teamId}::int, ${l.ownerKey}, ${l.contractVersion}::int, ${years}::int[],
+    ${JSON.stringify(amounts)}::jsonb, ${accepted}::boolean, ${l.state?.offers_used ?? 0}::int)`;
 }
 
 export async function POST(request: NextRequest) {
@@ -146,7 +145,8 @@ export async function POST(request: NextRequest) {
     }
     const years = l.state.demand_years;
     const amounts = Object.fromEntries(years.map((y) => [y, body.action === "accept" ? l.state!.demand! : 0]));
-    await sign(viewer, playerId, years, amounts, body.action === "accept");
+    try { await sign(viewer, l, years, amounts, body.action === "accept"); }
+    catch (error) { return adminError(error); }
     await audit(viewer, body.action === "accept" ? "extension_signed" : "extension_rejected", { player: l.player.name, amounts });
     return Response.json({
       done: true,
@@ -179,7 +179,8 @@ export async function POST(request: NextRequest) {
   const answer = respond(ratio, nowUsed, fairValue.snapped, tier, seed + nowUsed);
 
   if (answer.accepted) {
-    await sign(viewer, playerId, years, amounts, true);
+    try { await sign(viewer, l, years, amounts, true); }
+    catch (error) { return adminError(error); }
     await audit(viewer, "extension_signed", { player: l.player.name, amounts });
     return Response.json({ done: true, accepted: true, reply: answer.reply, offersUsed: nowUsed, final: { years, amounts } });
   }
@@ -193,9 +194,13 @@ export async function POST(request: NextRequest) {
   }
   // Only advance if nobody else moved this negotiation since we read it.
   const saved = await sql`
-    insert into extension_negotiations (player_id, team_id, offers_used, best_ratio, last_average, demand, demand_years)
-    values (${playerId}, ${viewer.teamId}, ${nowUsed}, ${bestRatio}, ${Math.round(average)}, ${demand?.amount ?? null}, ${demand?.years ?? null})
-    on conflict (player_id) do update set
+    insert into extension_negotiations (player_id, team_id, owner_key, contract_version, offers_used, best_ratio, last_average, demand, demand_years)
+    select ${playerId}, ${viewer.teamId}, ${l.ownerKey}, ${l.contractVersion}, ${nowUsed}, ${bestRatio}, ${Math.round(average)}, ${demand?.amount ?? null}, ${demand?.years ?? null}
+    where not exists(select 1 from extensions e where e.player_id = ${playerId} and e.contract_version = ${l.contractVersion} and (e.accepted or e.owner_key = ${l.ownerKey}))
+      and exists(select 1 from players p join teams t on t.id = p.team_id
+        where p.id = ${playerId} and p.team_id = ${viewer.teamId} and p.nba_experience > 0 and p.contract_version = ${l.contractVersion}
+          and coalesce('sleeper:' || t.sleeper_user_id, 'team:' || t.id) = ${l.ownerKey})
+    on conflict (player_id, contract_version, owner_key) do update set
       offers_used = excluded.offers_used, best_ratio = excluded.best_ratio, last_average = excluded.last_average,
       demand = excluded.demand, demand_years = excluded.demand_years, updated_at = now()
     where extension_negotiations.offers_used = ${used}

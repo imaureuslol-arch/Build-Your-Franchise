@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 import { useMemo, useState, useEffect, useCallback, useDeferredValue } from "react";
 import { usePlayers, refreshLeague } from "@/lib/hooks";
 import FreeAgencySchedule from "@/components/FreeAgencySchedule";
-import { getWeightedValue, minOffer, type FreeAgencyRound, type FreeAgencyAward } from "@/lib/free-agency-rules";
+import { getWeightedValue, minOffer, isSevereUnderbid, acceptanceDays, type FreeAgencyRound, type FreeAgencyAward, type PlayerAuction } from "@/lib/free-agency-rules";
+import CountdownClock from "@/components/CountdownClock";
 import { useUserTeam } from "@/lib/user-context";
 import {
   Player,
@@ -69,15 +70,21 @@ export default function FreeAgencyPage() {
 
   const [round, setRound] = useState<FreeAgencyRound | null>(null);
   const [awards, setAwards] = useState<FreeAgencyAward[]>([]);
+  const [auctions, setAuctions] = useState<PlayerAuction[]>([]);
+  const [restrictedPlayers, setRestrictedPlayers] = useState<{player_id:number; owner_key:string; team_name:string | null}[]>([]);
+  const [sortBy, setSortBy] = useState<"time" | "bid">("time");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [serverClock, setServerClock] = useState<{ server: number; local: number } | null>(null);
   const [now, setNow] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const biddingOpen = !!round?.closes_at && now < Date.parse(round.closes_at);
   const [searchQuery, setSearchQuery] = useState("");
   // Bids are placed as the logged-in team; the server checks this too
   const selectedUser = myOwner?.user_name ?? "";
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const selectedAuction = auctions.find(a => a.player_id === selectedPlayer?.id);
+  const biddingOpen = !!round && (!selectedAuction || now < Date.parse(selectedAuction.accepts_at))
+    && !awards.some(a => a.player_id === selectedPlayer?.id);
   const [offerYears, setOfferYears] = useState<number[]>([]);
   const [yearAmounts, setYearAmounts] = useState<{ [year: number]: number }>({});
   const [showCopyPopup, setShowCopyPopup] = useState(false);
@@ -103,6 +110,8 @@ export default function FreeAgencyPage() {
       setOfferHistory((data.offers as FAOfferRow[]).map(rowToOffer));
       setRound(data.round);
       setAwards(data.awards);
+      setAuctions(data.auctions ?? []);
+      setRestrictedPlayers(data.restrictedPlayers ?? []);
       const server = Date.parse(data.serverNow);
       setServerClock({ server, local: performance.now() });
       setNow(server);
@@ -170,8 +179,12 @@ export default function FreeAgencyPage() {
   }, [offerHistory]);
 
   const playerIdsWithOffers = useMemo(() => {
-    return [...offersByPlayer.keys()];
-  }, [offersByPlayer]);
+    return [...offersByPlayer.keys()].sort((a,b) => {
+      const av = sortBy === "bid" ? getWeightedValue(offersByPlayer.get(a)![0]) : Date.parse(auctions.find(x => String(x.player_id) === a)?.accepts_at ?? "") || 0;
+      const bv = sortBy === "bid" ? getWeightedValue(offersByPlayer.get(b)![0]) : Date.parse(auctions.find(x => String(x.player_id) === b)?.accepts_at ?? "") || 0;
+      return (sortDirection === "asc" ? av-bv : bv-av) || a.localeCompare(b);
+    });
+  }, [offersByPlayer, auctions, sortBy, sortDirection]);
 
   function selectPlayer(player: Player) {
     setSelectedPlayer(player);
@@ -198,6 +211,7 @@ export default function FreeAgencyPage() {
     if (loadError) errors.push("Bidding data could not be refreshed");
     if (!selectedUser) errors.push("Open your login link to bid");
     if (!selectedPlayer) errors.push("Select a player");
+    if (selectedPlayer && !(values[selectedPlayer.id]?.fairValue > 0)) errors.push("This player needs a fair value before bidding");
     if (offerYears.length === 0) errors.push("Select at least one year");
 
     const sorted = [...offerYears].sort((a, b) => a - b);
@@ -246,6 +260,7 @@ export default function FreeAgencyPage() {
       prev.some((o) => o.id === offer.id) ? prev : [offer, ...prev]
     );
     setCopiedOffer(offer);
+    await refreshOffers();
     setShowCopyPopup(true);
 
     setOfferYears([]);
@@ -262,6 +277,7 @@ export default function FreeAgencyPage() {
       return;
     }
     setOfferHistory((prev) => prev.filter((o) => o.playerId !== playerId));
+    await refreshOffers();
     if (viewingPlayerId === playerId) setViewingPlayerId(null);
   }
 
@@ -278,7 +294,7 @@ export default function FreeAgencyPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       <h1 className="text-4xl mb-6">Free Agency Tracker</h1>
       {loadError && <p role="alert" className="mb-4 text-sm text-cap-over">{loadError} <button className="underline" onClick={refreshOffers}>Retry</button></p>}
-      {round && <FreeAgencySchedule round={round} now={now} canManage={canClear} bids={offerHistory} awards={awards} refresh={refreshOffers} />}
+      {round && <FreeAgencySchedule round={round} now={now} canManage={canClear} bids={offerHistory} awards={awards} auctions={auctions} ownerKey={myOwner?.owner_key} refresh={refreshOffers} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Player List */}
@@ -340,6 +356,8 @@ export default function FreeAgencyPage() {
           ) : (
             <div className="bg-surface rounded-sm border border-border p-6">
               <h2 className="font-bold text-xl mb-4">{selectedPlayer.name}</h2>
+              {restrictedPlayers.some(p => p.player_id === selectedPlayer.id) && <p className="text-sm text-primary mb-3">Restricted free agent · {restrictedPlayers.find(p => p.player_id === selectedPlayer.id)?.team_name ?? "Previous owner"} can match the winning contract.</p>}
+              {selectedAuction && <div className="mb-4"><CountdownClock deadline={selectedAuction.accepts_at} now={now} /></div>}
               
               <div className="mb-6">
                 <label className="text-xs font-bold text-text-muted uppercase mb-2 block">Your Identity</label>
@@ -433,6 +451,9 @@ export default function FreeAgencyPage() {
                         ? `Would become the highest bid (current top: ${formatSalary(topWeighted)} weighted).`
                         : `Would rank #${rank} of ${existing.length + 1}. Top bid is ${formatSalary(topWeighted)} weighted.`}
                     </div>
+                    <p className="mt-2">{selectedAuction
+                      ? "Submitting this bid adds 12 hours to the existing deadline."
+                      : `First-bid countdown: ${acceptanceDays(myWeighted, (values[selectedPlayer.id]?.fairValue ?? 0)*1000000).toFixed(1)} days.`}</p>
                   </div>
                 );
               })()}
@@ -452,13 +473,19 @@ export default function FreeAgencyPage() {
         <div className="lg:col-span-1">
           <div className="bg-surface rounded-sm border border-border overflow-hidden">
             <h3 className="px-4 py-3 border-b border-border text-lg">Offer Log</h3>
+            <div className="px-4 py-3 border-b border-border flex flex-wrap gap-2 text-xs">
+              <button className="border border-border rounded-sm px-2 py-1" onClick={() => setSortBy(v => v === "time" ? "bid" : "time")}>Sort: {sortBy === "time" ? "Time Left" : "Bid"}</button>
+              <button className="border border-border rounded-sm px-2 py-1" onClick={() => setSortDirection(v => v === "asc" ? "desc" : "asc")}>{sortDirection === "asc" ? "Ascending ↑" : "Descending ↓"}</button>
+            </div>
             <div className="max-h-[600px] overflow-y-auto">
               {playerIdsWithOffers.map((pId) => {
                 const offers = offersByPlayer.get(pId)!;
                 const top = offers[0];
+                const auction = auctions.find(a => String(a.player_id) === pId);
+                const severe = isSevereUnderbid(getWeightedValue(top), Number(auction?.fair_value ?? (values[Number(pId)]?.fairValue ?? 0)*1000000));
                 const isViewing = viewingPlayerId === pId;
                 return (
-                  <div key={pId} className="border-b border-border/50">
+                  <div key={pId} className={`border-b ${severe ? "border-[#ff00b8] bg-[#ff00b8]/15 shadow-[inset_3px_0_0_#ff00b8]" : "border-border/50"}`}>
                     <button 
                       onClick={() => setViewingPlayerId(isViewing ? null : pId)}
                       className="w-full text-left p-4 hover:bg-surface-light"
@@ -471,6 +498,8 @@ export default function FreeAgencyPage() {
                         Top: {formatSalary(getWeightedValue(top))} weighted
                         <span className="text-text-dim/60"> · {formatSalary(top.totalValue)} total</span>
                       </div>
+                      {severe && <p className="text-xs font-bold text-[#ff00b8] mt-1">Bid far below value · {formatSalary(Number(auction?.fair_value ?? (values[Number(pId)]?.fairValue ?? 0)*1000000))} fair value</p>}
+                      {auction && <div className="mt-2"><CountdownClock compact deadline={auction.accepts_at} now={now} /></div>}
                     </button>
                     {isViewing && (
                       <div className="p-4 bg-surface-light space-y-2 border-t border-border/30">
@@ -494,7 +523,7 @@ export default function FreeAgencyPage() {
                             </div>
                           </div>
                         ))}
-                        {canClear && biddingOpen && <button
+                        {canClear && auction && now < Date.parse(auction.accepts_at) && !awards.some(a => String(a.player_id) === pId) && <button
                           onClick={() => handleClear(pId)}
                           className="w-full py-1 text-xs text-cap-over font-bold uppercase hover:underline"
                         >

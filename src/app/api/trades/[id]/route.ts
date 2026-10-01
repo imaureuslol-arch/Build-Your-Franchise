@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { audit, forbidden, getViewer, isAnyCommish, notLoggedIn } from "@/lib/auth";
-import { executeTrade } from "@/lib/trades";
+import { checkTrade, executeTrade, type TradeInput } from "@/lib/trades";
+import { decodePickId, isPickId } from "@/lib/types";
+import { adminError } from "@/lib/admin-errors";
 import { checkRosters } from "@/lib/sleeper-sync";
 
-type Action = "accept" | "decline" | "cancel" | "approve" | "reject";
+type Action = "accept" | "decline" | "cancel" | "approve" | "reject" | "counter";
 
 /**
  * POST { action } on one trade.
@@ -16,32 +18,48 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/trades/
   const viewer = await getViewer();
   if (!viewer) return notLoggedIn();
   const { id } = await ctx.params;
-  const { action } = (await request.json()) as { action: Action };
+  const body = await request.json().catch(() => null) as { action: Action; revision: number; trade?: TradeInput } | null;
+  if (!body) return Response.json({error:"Choose a trade response."}, {status:400});
+  const { action } = body;
 
   const [trade] = await sql`select id, status, proposed_by from trades where id = ${id}`;
   if (!trade) return Response.json({ error: "Trade not found" }, { status: 404 });
   const teams = await sql`select team_id, accepted_at from trade_teams where trade_id = ${id}`;
   const mine = teams.find((t) => t.team_id === viewer.teamId);
 
-  switch (action) {
-    case "accept": {
-      if (trade.status !== "proposed" || !mine) return forbidden();
-      await sql.transaction([
-        sql`update trade_teams set accepted_at = now() where trade_id = ${id} and team_id = ${viewer.teamId}`,
-        sql`update trades set status = 'accepted'
-            where id = ${id} and status = 'proposed'
-              and not exists (select 1 from trade_teams where trade_id = ${id} and accepted_at is null)`,
-      ]);
-      break;
+  if (["accept", "decline", "cancel", "counter"].includes(action)) {
+    if (!mine) return forbidden();
+    if (!Number.isSafeInteger(body.revision) || body.revision < 0) {
+      return Response.json({error:"Refresh the trade before responding."}, {status:409});
     }
-    case "decline":
-      if (trade.status !== "proposed" || !mine) return forbidden();
-      await sql`update trades set status = 'declined', decided_at = now() where id = ${id}`;
-      break;
-    case "cancel":
-      if (!["proposed", "accepted"].includes(trade.status) || trade.proposed_by !== viewer.teamId) return forbidden();
-      await sql`update trades set status = 'cancelled', decided_at = now() where id = ${id}`;
-      break;
+    try {
+      let counter = null;
+      if (action === "counter") {
+        const input = body.trade;
+        if (!input || !Array.isArray(input.teams) || !Array.isArray(input.items)
+          || !input.teams.every(t => typeof t.team === "string" && Number.isSafeInteger(t.retained) && t.retained >= 0)
+          || !input.items.every(i => Number.isSafeInteger(i.playerId) && typeof i.from === "string" && typeof i.to === "string")) {
+          return Response.json({error:"Choose the teams and items for your counteroffer."}, {status:400});
+        }
+        const checked = await checkTrade(input);
+        if (!checked.ok) return Response.json({errors:checked.errors}, {status:422});
+        counter = {
+          teams: input.teams.map(t => ({teamId:checked.teamIds.get(t.team), retained:t.retained})),
+          items: input.items.map(i => {
+            const pick = isPickId(i.playerId) ? decodePickId(i.playerId) : null;
+            return {playerId:i.playerId > 0 ? i.playerId : null, fromTeam:checked.teamIds.get(i.from), toTeam:checked.teamIds.get(i.to),
+              kind:i.playerId > 0 ? "player" : pick ? "pick" : "dead_cap", pickSeason:pick?.season, pickRound:pick?.round, pickOriginal:pick?.originalTeamId};
+          }),
+        };
+      }
+      const [result] = await sql`select byf_trade_reply(${id}::uuid, ${viewer.teamId}::int, ${body.revision}::int,
+        ${action}, ${JSON.stringify(counter)}::jsonb) as result`;
+      await audit(viewer, `trade_${action}`, {id, revision:body.revision, ...(counter ? {counter} : {})});
+      return Response.json(result.result);
+    } catch (error) { return adminError(error); }
+  }
+
+  switch (action) {
     case "approve": {
       if (trade.status !== "accepted" || !isAnyCommish(viewer)) return forbidden();
       const errors = await executeTrade(id);

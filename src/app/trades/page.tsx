@@ -53,6 +53,7 @@ function TradesPage() {
   const [history, setHistory] = useState<TradeView[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [countering, setCountering] = useState<TradeView | null>(null);
 
   const loadTrades = useCallback(async () => {
     const res = await fetch("/api/trades");
@@ -328,10 +329,12 @@ function TradesPage() {
     setSubmitting(true);
     setNotice(null);
     try {
-      const res = await fetch("/api/trades", {
+      const res = await fetch(countering && !record ? `/api/trades/${countering.id}` : "/api/trades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trade: buildTradeInput(), record }),
+        body: JSON.stringify(countering && !record
+          ? {action:"counter", revision:countering.revision, trade:buildTradeInput()}
+          : { trade: buildTradeInput(), record }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -342,9 +345,10 @@ function TradesPage() {
       setNotice(
         record
           ? "Trade recorded. Rosters are updated; make the same trade in Sleeper."
-          : "Trade proposed. The other teams can accept it below."
+          : countering ? "Counteroffer sent. The other teams must accept the revised terms." : "Trade proposed. The other teams can accept it below."
       );
       await loadTrades();
+      window.dispatchEvent(new Event("byf-trades-changed"));
       if (record) window.location.reload();
     } finally {
       setSubmitting(false);
@@ -354,9 +358,24 @@ function TradesPage() {
   const inTrade = slots.some((s) => s.team && s.team === myTeam);
 
   function handleReset() {
+    setCountering(null);
     setSlots([{ team: "", playersOut: [], retainedSalary: 0 }, { team: "", playersOut: [], retainedSalary: 0 }]);
     setDestinationMap({});
     setValidationResult(null);
+  }
+
+  function handleCounter(trade: TradeView) {
+    if (!picksLoaded) { setNotice("Picks are still loading. Try the counteroffer again shortly."); return; }
+    const assets = new Map([...allPlayers, ...picks].map(p => [p.id, p]));
+    if (trade.items.some(i => !assets.has(i.playerId) || assets.get(i.playerId)!.team !== i.from)) {
+      setNotice("A player or pick in this trade changed ownership. Refresh before countering."); return;
+    }
+    setCountering(trade);
+    setSlots(trade.teams.map(t => ({team:t.team, retainedSalary:t.retained,
+      playersOut:trade.items.filter(i => i.from === t.team).map(i => assets.get(i.playerId)!)})));
+    setDestinationMap(Object.fromEntries(trade.items.map(i => [`${i.from}:${assets.get(i.playerId)!.name}`, i.to])));
+    setValidationResult(null);
+    setNotice(null);
   }
 
   if (loading) {
@@ -390,7 +409,11 @@ function TradesPage() {
         </div>
       </div>
 
-      <TradeProposals trades={openTrades} myTeam={myTeam} isCommish={isCommish} onChange={loadTrades} />
+      <TradeProposals trades={openTrades} myTeam={myTeam} isCommish={isCommish} onChange={loadTrades} onCounter={handleCounter} />
+      {countering && <div className="mb-4 border border-primary rounded-sm p-3 text-sm">
+        Counteroffer to {countering.proposed_by}. Previous acceptances will be cleared when you send it.
+        <button className="ml-3 underline" onClick={handleReset}>Cancel counteroffer</button>
+      </div>}
 
       <div className="flex flex-col md:flex-row gap-4 md:overflow-x-auto pb-4">
         {slots.map((slot, i) => {
@@ -506,10 +529,10 @@ function TradesPage() {
               title={inTrade ? undefined : "Your team has to be in the trade"}
               className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-cap-under text-white rounded-sm font-medium hover:opacity-90 transition-colors disabled:opacity-40"
             >
-              Propose Trade
+              {countering ? "Send Counteroffer" : "Propose Trade"}
             </button>
           )}
-          {isCommish && (
+          {isCommish && !countering && (
             <button
               onClick={() => confirm("Record this trade now? Rosters and cap change immediately.") && submit(true)}
               disabled={submitting}

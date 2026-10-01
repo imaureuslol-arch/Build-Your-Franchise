@@ -11,9 +11,10 @@ interface Props {
   /** Current time in ms, kept in step with the server clock by the page. */
   now: number;
   label?: string;
+  compact?: boolean;
 }
 
-export default function CountdownClock({ deadline, now, label = "Time until bidding closes" }: Props) {
+export default function CountdownClock({ deadline, now, label = "Time until bidding closes", compact = false }: Props) {
   const total = Math.max(0, Math.ceil((Date.parse(deadline) - now) / 1000));
   const units = [
     { value: Math.floor(total / 86400), label: "Days" },
@@ -22,6 +23,9 @@ export default function CountdownClock({ deadline, now, label = "Time until bidd
     { value: total % 60, label: "Sec" },
   ];
   const final = total < 86400;
+
+  if (compact) return <span role="timer" aria-label={`${label}: ${total === 0 ? "Closed" : units.map(u => `${u.value} ${u.label}`).join(" ")}`}
+    className="text-xs font-mono text-text-muted">{total === 0 ? "Bidding closed" : `${units[0].value}d ${units[1].value}h ${units[2].value}m ${units[3].value}s left`}</span>;
 
   return (
     <div role="timer" aria-label={`${label}: ${units.map((u) => `${u.value} ${u.label}`).join(" ")}`}

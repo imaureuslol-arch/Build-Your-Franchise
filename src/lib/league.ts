@@ -10,7 +10,7 @@ import { loadSleeperConferences } from "./sleeper-conferences";
  */
 export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwner[] }> {
   const [players, contracts, deadCap, teams, conferences] = await Promise.all([
-    sql`select p.id, p.name, t.name as team, p.ppg, p.avg_gp
+    sql`select p.id, p.name, t.name as team, p.ppg, p.avg_gp, p.nba_experience, p.contract_version
         from players p left join teams t on t.id = p.team_id
         -- Free agents must be on an NBA team (Sleeper's team field).
         where p.team_id is not null or (p.active and p.nba_team is not null)`,
@@ -18,7 +18,7 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
     sql`select t.id as team_id, t.name as team, d.season, sum(d.amount)::bigint as amount
         from dead_cap d join teams t on t.id = d.team_id
         group by t.id, t.name, d.season`,
-    sql`select name, owner_name, conference, sleeper_roster from teams order by name`,
+    sql`select id, name, owner_name, sleeper_user_id, conference, sleeper_roster from teams order by name`,
     // Page reads use Sleeper's split directly; stored assignments are an outage fallback.
     loadSleeperConferences(process.env.SLEEPER_LEAGUE_ID ?? "").catch(() => new Map<number, string | null>()),
   ]);
@@ -33,7 +33,7 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
 
   const byId = new Map<number, Player>();
   for (const p of players) {
-    byId.set(p.id, { ...blank(p.id, p.name, p.team ?? FREE_AGENCY_TEAM), ppg: p.ppg, avg_gp: p.avg_gp });
+    byId.set(p.id, { ...blank(p.id, p.name, p.team ?? FREE_AGENCY_TEAM), ppg: p.ppg, avg_gp: p.avg_gp, nbaExperience: p.nba_experience, contractVersion:p.contract_version });
   }
   for (const c of contracts) {
     const p = byId.get(c.player_id);
@@ -51,6 +51,7 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
   const owners: TeamOwner[] = teams.map((t) => ({
     team_name: t.name,
     user_name: t.owner_name ?? "(no owner)",
+    owner_key: t.sleeper_user_id != null ? `sleeper:${t.sleeper_user_id}` : `team:${t.id}`,
     conference: conferences.has(t.sleeper_roster) ? conferences.get(t.sleeper_roster)! : t.conference,
   }));
 

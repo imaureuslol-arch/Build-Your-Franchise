@@ -3,21 +3,15 @@
 import { useState } from "react";
 import { formatSalary } from "@/lib/types";
 
-export interface TradeView {
-  id: string;
-  status: string;
-  created_at: string;
-  decided_at: string | null;
-  proposed_by: string | null;
-  teams: { team: string; retained: number; accepted: boolean }[];
-  items: { player: string; salary: number | null; from: string; to: string }[];
-}
+import type { TradeView } from "@/lib/trades";
+export type { TradeView } from "@/lib/trades";
 
 interface Props {
   trades: TradeView[];
   myTeam: string | null;
   isCommish: boolean;
   onChange: () => void;
+  onCounter: (trade: TradeView) => void;
 }
 
 /** One trade: who gets what, with each team's acceptance. */
@@ -50,7 +44,7 @@ export function TradeSummary({ trade }: { trade: TradeView }) {
 }
 
 /** Open trades: accept/decline for the teams in them, approve/reject for commissioners. */
-export default function TradeProposals({ trades, myTeam, isCommish, onChange }: Props) {
+export default function TradeProposals({ trades, myTeam, isCommish, onChange, onCounter }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
 
@@ -64,7 +58,7 @@ export default function TradeProposals({ trades, myTeam, isCommish, onChange }: 
     const res = await fetch(`/api/trades/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, revision: trades.find(t => t.id === id)?.revision }),
     });
     const data = await res.json().catch(() => ({}));
     setErrors((e) => ({ ...e, [id]: res.ok ? [] : data.errors ?? [data.error ?? "That didn't work."] }));
@@ -102,6 +96,7 @@ export default function TradeProposals({ trades, myTeam, isCommish, onChange }: 
               {canRespond && (
                 <>
                   <button className={`${btn} bg-cap-under/15`} disabled={busy === t.id} onClick={() => act(t.id, "accept")}>Accept</button>
+                  <button className={btn} disabled={busy === t.id} onClick={() => onCounter(t)}>Counteroffer</button>
                   <button className={btn} disabled={busy === t.id} onClick={() => act(t.id, "decline")}>Decline</button>
                 </>
               )}

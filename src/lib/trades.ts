@@ -206,18 +206,19 @@ export async function executeTrade(tradeId: string): Promise<string[]> {
 
 export interface TradeView {
   id: string;
+  revision: number;
   status: string;
   created_at: string;
   decided_at: string | null;
   proposed_by: string | null;
   teams: { team: string; retained: number; accepted: boolean }[];
-  items: { player: string; salary: number | null; from: string; to: string }[];
+  items: { playerId: number; player: string; salary: number | null; from: string; to: string }[];
 }
 
 /** Trades for display, newest first. */
 export async function listTrades(statuses: string[]): Promise<TradeView[]> {
   const trades = await sql`
-    select tr.id, tr.status, tr.created_at, tr.decided_at, t.name as proposed_by
+    select tr.id, tr.revision, tr.status, tr.created_at, tr.decided_at, t.name as proposed_by
     from trades tr left join teams t on t.id = tr.proposed_by
     where tr.status = any(${statuses}) order by tr.created_at desc limit 100`;
   if (trades.length === 0) return [];
@@ -225,7 +226,7 @@ export async function listTrades(statuses: string[]): Promise<TradeView[]> {
   const [teams, items] = await Promise.all([
     sql`select tt.trade_id, t.name, tt.retained, tt.accepted_at from trade_teams tt
         join teams t on t.id = tt.team_id where tt.trade_id = any(${ids})`,
-    sql`select ti.trade_id,
+    sql`select ti.trade_id, ti.player_id, ti.from_team, ti.kind, ti.pick_season, ti.pick_round, ti.pick_original,
                case when ti.kind = 'pick' then ti.pick_season || ' ' || case ti.pick_round when 1 then '1st' when 2 then '2nd'
                          else ti.pick_round || 'th' end || ' (' || orig.name || ')'
                     else coalesce(p.name, 'Dead Cap') end as player,
@@ -239,12 +240,14 @@ export async function listTrades(statuses: string[]): Promise<TradeView[]> {
   ]);
   return trades.map((t) => ({
     id: t.id,
+    revision: t.revision,
     status: t.status,
     created_at: t.created_at,
     decided_at: t.decided_at,
     proposed_by: t.proposed_by,
     teams: teams.filter((x) => x.trade_id === t.id).map((x) => ({ team: x.name, retained: Number(x.retained), accepted: !!x.accepted_at })),
     items: items.filter((x) => x.trade_id === t.id).map((x) => ({
+      playerId: x.kind === "pick" ? pickPlayerId(x.pick_season, x.pick_round, x.pick_original) : x.kind === "dead_cap" ? -x.from_team : x.player_id,
       player: x.player, salary: x.salary == null ? null : Number(x.salary), from: x.from_name, to: x.to_name,
     })),
   }));

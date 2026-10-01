@@ -48,6 +48,22 @@ export function* findTrades(
     return primary || a.difference - b.difference || a.salary - b.salary || a.team.localeCompare(b.team)
       || a.assets.map((p) => p.id).join(",").localeCompare(b.assets.map((p) => p.id).join(","));
   };
+  const selectResults = (candidates: TradeMatch[]): TradeMatch[] => {
+    const appearances = new Map<number, number>();
+    const playerPackages = new Set<string>();
+    const selected: TradeMatch[] = [];
+    for (const candidate of candidates.sort(compare)) {
+      const players = candidate.assets.filter(p => !isPick(p));
+      const packageKey = JSON.stringify([candidate.team, (players.length ? players : candidate.assets).map(p => p.id).sort((a,b) => a-b)]);
+      if (playerPackages.has(packageKey)) continue;
+      if (players.some(p => (appearances.get(p.id) ?? 0) >= 5)) continue;
+      selected.push(candidate);
+      playerPackages.add(packageKey);
+      for (const p of players) appearances.set(p.id, (appearances.get(p.id) ?? 0) + 1);
+      if (selected.length === 50) break;
+    }
+    return selected;
+  };
   let best: TradeMatch[] = [];
   let checked = 0;
   let teamsDone = 0;
@@ -73,11 +89,11 @@ export function* findTrades(
         const difference = Math.abs(value - outgoingValue);
         if (filters.valueTolerance !== null && difference > outgoingValue * filters.valueTolerance) continue;
         best.push({ team: otherTeam, assets, salary, value, difference, fppg: playersIn.reduce((n, p) => n + (p.ppg ?? 0), 0) });
-        if (best.length >= 100) best = best.sort(compare).slice(0, 50);
+        if (best.length >= 100) best = selectResults(best);
       }
     }
     teamsDone++;
     yield { checked, teamsDone, teamsTotal: teams.length, matches: [] };
   }
-  return best.sort(compare).slice(0, 50);
+  return selectResults(best);
 }

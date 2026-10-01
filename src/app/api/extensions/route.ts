@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
   const extensions = await sql`
     select e.id, e.player_id, p.name as player_name, t.name as team_name,
            coalesce(t.owner_name, t.name) as user_name,
-           e.years, e.amounts, e.total_value, e.accepted, e.created_at
+           e.years, e.amounts, e.total_value, e.accepted, e.created_at, e.owner_key, e.contract_version
     from extensions e
     join players p on p.id = e.player_id
     join teams t on t.id = e.team_id
