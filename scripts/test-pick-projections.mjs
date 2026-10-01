@@ -5,13 +5,13 @@ import ts from "typescript";
 function load(file, dependencies = {}) {
   const source = fs.readFileSync(new URL(`../src/lib/${file}.ts`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
-  const module = { exports: {} };
-  new Function("require", "module", "exports", code)((key) => dependencies[key], module, module.exports);
-  return module.exports;
+  const loadedModule = { exports: {} };
+  new Function("require", "module", "exports", code)((key) => dependencies[key], loadedModule, loadedModule.exports);
+  return loadedModule.exports;
 }
 const types = load("types"), aging = load("aging");
 const { projectFppg, futureTeamPower, toRating } = load("team-projection", { "./aging": aging });
-const { valuePicks, YEARLY_DISCOUNT, rookieScale, HISTORICAL_CURVE } = load("pick-value", { "./types": types });
+const { valuePicks, ownPickPremium, YEARLY_DISCOUNT, rookieScale, HISTORICAL_CURVE } = load("pick-value", { "./types": types });
 const current = { Veterans: 100, Youth: 80, Middle: 1 };
 const rosters = [
   ...[41, 38, 38, 31, 32].map((age) => ({ team: "Veterans", age, fppg: 50 })),
@@ -42,7 +42,7 @@ test("future slot uses that year's projection, not today's contender rank", () =
   assert(values[picks[3].id].fairValue > frozen[picks[3].id].fairValue);
 });
 test("20% annual distance discount: 100%, 80%, 64%, 51.2%", () => {
-  const picks = years.map((y) => pick(y));
+  const picks = years.map((y) => pick(y, 1, 1, "Youth"));
   const values = valuePicks(picks, current, ids, 2027, { A: 10, k: 0 }, forecast);
   assert.equal(YEARLY_DISCOUNT, .8);
   assert.deepEqual(picks.map((p) => values[p.id].fairValue), [10, 8, 6.4, 5.1]);
@@ -65,15 +65,18 @@ test("young bench replaces fading starters when lineups are re-ranked", () => {
 });
 test("traded picks project the original team, regardless of owner", () => {
   const a = pick(2030), b = pick(2030, 1, 1, "Youth");
-  assert.deepEqual(valuePicks([a], current, ids, 2027, undefined, forecast), valuePicks([b], current, ids, 2027, undefined, forecast));
+  const { fairValue: ownedValue, ...ownedProjection } = valuePicks([a], current, ids, 2027, undefined, forecast)[a.id];
+  const { fairValue: tradedValue, ...tradedProjection } = valuePicks([b], current, ids, 2027, undefined, forecast)[b.id];
+  assert.deepEqual(ownedProjection, tradedProjection);
+  assert(ownedValue > tradedValue);
 });
 test("round two keeps its overall-slot offset and rookie scale", () => {
   const p = pick(2030, 2);
   const value = valuePicks([p], current, ids, 2027, undefined, forecast)[p.id];
   assert.equal(value.slot, 4); assert.equal(value.salary, rookieScale(4));
 });
-test("next draft's historical value model remains unchanged", () => {
-  const p = pick(2027), value = valuePicks([p], current, ids, 2027, undefined, forecast)[p.id];
+test("another owner's pick keeps the historical value model unchanged", () => {
+  const p = pick(2027, 1, 1, "Youth"), value = valuePicks([p], current, ids, 2027, undefined, forecast)[p.id];
   const V = (slot) => HISTORICAL_CURVE.A * Math.exp(-HISTORICAL_CURVE.k * (slot - 1));
   const expected = .7 * V(3) + .3 * (V(1) + V(2) + V(3)) / 3;
   assert.equal(value.fairValue, Math.round(expected * 10) / 10);
@@ -89,5 +92,51 @@ test("empty/equal-strength leagues produce safe, finite forecasts", () => {
   assert.deepEqual(valuePicks([], {}, new Map(), 2027), {});
   assert.deepEqual(futureTeamPower([], {}, 2027, years)[2030], {});
   assert.deepEqual(Object.fromEntries(toRating(new Map([["A", 0], ["B", 0]]))), { A: 50, B: 50 });
+});
+test("own-pick bonus follows a bounded logarithmic curve: #1 30%, #3 about 25%, #10 zero", () => {
+  assert.equal(ownPickPremium(1), .3);
+  assert(Math.abs(ownPickPremium(3) - .25) < .002);
+  assert.equal(ownPickPremium(10), 0);
+  for (let slot = 2; slot <= 24; slot++) {
+    assert(ownPickPremium(slot) >= 0 && ownPickPremium(slot) <= .3);
+    assert(ownPickPremium(slot) <= ownPickPremium(slot - 1));
+  }
+  for (const slot of [0, -1, NaN, Infinity]) assert.equal(ownPickPremium(slot), 0);
+});
+const fullPower = Object.fromEntries(Array.from({ length: 24 }, (_, i) => [`Team ${i + 1}`, i + 1]));
+const fullIds = new Map(Array.from({ length: 24 }, (_, i) => [i + 1, `Team ${i + 1}`]));
+const flatCurve = { A: 10, k: 0 };
+test("a self-owned #3 increases from $10M to $12.5M and loses the bonus when traded", () => {
+  const p = pick(2027, 1, 3, "Team 3");
+  const own = valuePicks([p], fullPower, fullIds, 2027, flatCurve)[p.id];
+  const traded = valuePicks([{ ...p, team: "Team 24" }], fullPower, fullIds, 2027, flatCurve)[p.id];
+  assert.equal(own.slot, 3);
+  assert.equal(own.fairValue, 12.5);
+  assert.equal(traded.fairValue, 10);
+  assert.equal(own.salary, traded.salary);
+  assert.equal(own.power, traded.power);
+});
+test("mid-table, contending and second-round picks get no own-pick bonus", () => {
+  for (const [original, round] of [[10, 1], [24, 1], [1, 2], [3, 2]]) {
+    const p = pick(2027, round, original, `Team ${original}`);
+    assert.equal(valuePicks([p], fullPower, fullIds, 2027, flatCurve)[p.id].fairValue, 10);
+  }
+});
+test("bonus uses that draft year's landing spot and retains the future discount", () => {
+  const p = pick(2028, 1, 12, "Team 12");
+  const forecastPower = { ...fullPower, "Team 12": 3, "Team 3": 12 };
+  const base = valuePicks([p], fullPower, fullIds, 2027, flatCurve)[p.id];
+  const future = valuePicks([p], fullPower, fullIds, 2027, flatCurve, { 2028: forecastPower })[p.id];
+  assert.equal(base.slot, 12);
+  assert.equal(base.fairValue, 8);
+  assert.equal(future.slot, 3);
+  assert.equal(future.currentSlot, 12);
+  assert.equal(future.discount, .8);
+  assert.equal(future.fairValue, 10);
+});
+test("an unrecognised original team cannot acquire a bonus from the fallback slot", () => {
+  const p = pick(2027, 1, 99, "Unknown");
+  const value = valuePicks([p], { Known: 1 }, new Map([[99, "Unknown"]]), 2027, flatCurve)[p.id];
+  assert.equal(value.fairValue, 10);
 });
 console.log(`${count} pick projection checks passed.`);

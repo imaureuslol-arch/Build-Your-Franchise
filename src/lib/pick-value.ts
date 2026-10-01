@@ -15,6 +15,10 @@
  *    regress toward the round's average slot value (CERTAINTY).
  * 4. Time. 20% off per year beyond the next draft. A worsening team's better
  *    projected slot can outweigh this discount; it is not a price ceiling.
+ * 5. Keeping your own pick. If the original team still owns a projected
+ *    top-nine pick, increase its value on a logarithmic curve: up to 30%
+ *    at #1, about 25% at #3, and zero at #10 or later. This uses that draft
+ *    year's projection and disappears when another team holds the pick.
  *
  * Salary for the trade meter is the league's rookie scale at the projected
  * slot.
@@ -26,9 +30,18 @@ export const HISTORICAL_CURVE = { A: 27.5, k: 0.09 };
 /** Weight on the projected slot, by drafts from now (0 = next draft). */
 const CERTAINTY = [0.7, 0.4, 0.2];
 export const YEARLY_DISCOUNT = 0.8;
+const OWN_PICK_MAX_PREMIUM = 0.3;
+const OWN_PICK_PREMIUM_CUTOFF = 10;
 /** Rookie scale by overall pick ($M), from the league sheet; 2nd round $2M. */
 const ROOKIE_SCALE = [16, 15, 14, 13, 12, 12, 11, 11, 10, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3];
 const SECOND_ROUND_SCALE = 2;
+
+/** Extra value of keeping an early self-owned pick, by projected overall slot. */
+export function ownPickPremium(slot: number): number {
+  if (!Number.isFinite(slot) || slot < 1 || slot >= OWN_PICK_PREMIUM_CUTOFF) return 0;
+  return OWN_PICK_MAX_PREMIUM
+    * Math.log1p((OWN_PICK_PREMIUM_CUTOFF - slot) / (OWN_PICK_PREMIUM_CUTOFF - 1)) / Math.LN2;
+}
 
 export function rookieScale(slot: number): number {
   return (ROOKIE_SCALE[slot - 1] ?? SECOND_ROUND_SCALE) * 1_000_000;
@@ -90,14 +103,16 @@ export function valuePicks(
     const originalTeam = teamIds.get(originalTeamId) ?? "";
     const ratings = projectedPower[season] ?? power;
     const futureOrder = ordered(ratings);
-    const rank = futureOrder.indexOf(originalTeam) + 1 || Math.ceil(teams / 2);
+    const projectedIndex = futureOrder.indexOf(originalTeam);
+    const rank = projectedIndex >= 0 ? projectedIndex + 1 : Math.ceil(teams / 2);
     const slot = (round - 1) * teams + rank;
     const roundSlots = Array.from({ length: teams }, (_, i) => (round - 1) * teams + i + 1);
     const roundAverage = roundSlots.reduce((s, n) => s + V(n), 0) / teams;
     const ahead = Math.max(0, season - nextDraft);
     const certainty = CERTAINTY[Math.min(ahead, CERTAINTY.length - 1)] * .65 ** Math.max(0, ahead - 2);
     const discount = YEARLY_DISCOUNT ** ahead;
-    const value = (certainty * V(slot) + (1 - certainty) * roundAverage) * discount;
+    const premium = projectedIndex >= 0 && p.team === originalTeam ? ownPickPremium(slot) : 0;
+    const value = (certainty * V(slot) + (1 - certainty) * roundAverage) * discount * (1 + premium);
     const currentRank = order.indexOf(originalTeam) + 1 || Math.ceil(teams / 2);
     out[p.id] = {
       fairValue: Math.round(value * 10) / 10, salary: rookieScale(slot), slot,
