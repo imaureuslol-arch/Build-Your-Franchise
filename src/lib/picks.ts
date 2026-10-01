@@ -161,28 +161,69 @@ export async function loadPickPlayers(): Promise<Player[]> {
   }));
 }
 
-const ROTATION_SIZE = 10;
+const STARTERS = 8; // PG, SG, SF, PF, C + 3 UTIL
+const DEPTH = 2; // next two players, at half weight
+const FULL_SEASON_WEIGHT_AT_WEEK = 10;
+
+/** Scale scores so the best is 100 and the worst 1. */
+function toRating(scores: Map<string, number>): Map<string, number> {
+  const v = [...scores.values()];
+  const lo = Math.min(...v);
+  const hi = Math.max(...v);
+  return new Map([...scores].map(([k, s]) => [k, hi > lo ? 1 + (99 * (s - lo)) / (hi - lo) : 50]));
+}
 
 /**
- * Team power rating, 1-100: the summed fair value of each team's top
- * ROTATION_SIZE players, scaled so the strongest team is 100 and the weakest
- * is 1. Shown next to a pick for its original team: the lower the rating,
+ * Team power rating, 1-100: how strong a team is right now, not in four
+ * years. Shown next to a pick for its original team: the lower the rating,
  * the earlier that pick is likely to land.
+ *
+ *   projected  Sleeper's projected fantasy points per game this season (our
+ *              scoring) for the 8 best players, plus the next 2 at half weight
+ *   actual     fantasy points per game played, from Sleeper's standings
+ *
+ * Before the season it is all projection; actual results take over gradually
+ * and fully by week FULL_SEASON_WEIGHT_AT_WEEK.
  */
-export async function teamPowerRatings(): Promise<Record<string, number>> {
-  const rows = await sql`
-    select t.name, coalesce(sum(r.fair_value), 0)::float8 as score
-    from teams t
-    left join lateral (
-      select p.fair_value from players p
-      where p.team_id = t.id and p.fair_value is not null
-      order by p.fair_value desc limit ${ROTATION_SIZE}
-    ) r on true
-    group by t.name`;
-  const scores = rows.map((r) => r.score as number);
-  const lo = Math.min(...scores);
-  const hi = Math.max(...scores);
-  return Object.fromEntries(
-    rows.map((r) => [r.name, hi > lo ? Math.round(1 + (99 * (r.score - lo)) / (hi - lo)) : 50])
-  );
+export async function teamPowerRatings(leagueId: string): Promise<Record<string, number>> {
+  const [rows, rosters] = await Promise.all([
+    sql`
+      select t.name, t.sleeper_roster,
+        coalesce((
+          select sum(case when rn <= ${STARTERS} then f else f * 0.5 end)
+          from (
+            select coalesce(p.proj_fppg, p.ppg, 0) as f,
+                   row_number() over (order by coalesce(p.proj_fppg, p.ppg, 0) desc) as rn
+            from players p where p.team_id = t.id
+          ) ranked where rn <= ${STARTERS + DEPTH}
+        ), 0)::float8 as projected
+      from teams t`,
+    get<{ roster_id: number; settings: { wins?: number; losses?: number; ties?: number; fpts?: number; fpts_decimal?: number } }[]>(
+      `/league/${leagueId}/rosters`
+    ).catch(() => []),
+  ]);
+
+  const projected = toRating(new Map(rows.map((r) => [r.name as string, r.projected as number])));
+
+  const byRoster = new Map(rosters.map((r) => [r.roster_id, r.settings]));
+  const played = Math.max(0, ...rows.map((r) => {
+    const s = byRoster.get(r.sleeper_roster);
+    return (s?.wins ?? 0) + (s?.losses ?? 0) + (s?.ties ?? 0);
+  }));
+  const share = Math.min(1, played / FULL_SEASON_WEIGHT_AT_WEEK);
+  let actual = new Map<string, number>();
+  if (share > 0) {
+    actual = toRating(new Map(rows.map((r) => {
+      const s = byRoster.get(r.sleeper_roster);
+      const games = (s?.wins ?? 0) + (s?.losses ?? 0) + (s?.ties ?? 0);
+      const pts = (s?.fpts ?? 0) + (s?.fpts_decimal ?? 0) / 100;
+      return [r.name as string, games ? pts / games : 0];
+    })));
+  }
+
+  return Object.fromEntries(rows.map((r) => {
+    const name = r.name as string;
+    const blended = (1 - share) * projected.get(name)! + share * (actual.get(name) ?? projected.get(name)!);
+    return [name, Math.round(blended)];
+  }));
 }

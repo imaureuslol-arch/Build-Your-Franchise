@@ -11,6 +11,9 @@ import TeamTradeColumn from "@/components/TeamTradeColumn";
 import TradeSidebar from "@/components/TradeSidebar";
 import TradeProposals, { type TradeView } from "@/components/TradeProposals";
 
+// How much a bargain contract adds on top of the player's own value.
+const SURPLUS_WEIGHT = 0.25;
+
 interface TradeSlot {
   team: string;
   playersOut: Player[];
@@ -233,11 +236,9 @@ function TradesPage() {
   }
 
   /**
-   * Per-player: fairValue + (fairValue - salary) = 2*FV - salary.
-   * Captures star power (absolute FV) plus contract efficiency (surplus),
-   * so a max-contract superstar still grades as a premium asset.
-   * Retention reduces effective incoming salary (same treatment as cap math).
-   * Missing FV contributes 0 to the FV sum. Returned in dollars.
+   * What a team receives, in dollars: fair value plus SURPLUS_WEIGHT of the
+   * contract surplus (fair value minus salary, net of salary other teams
+   * retain). Missing fair values count as 0.
    */
   function computeTradeValue(teamName: string): { value: number; missingFV: string[] } {
     if (!teamName) return { value: 0, missingFV: [] };
@@ -254,7 +255,9 @@ function TradesPage() {
       }
       salarySum += getCurrentSalary(p) || 0;
     }
-    const value = 2 * fvSum - salarySum + getIncomingRetained(teamName);
+    // Talent first: an elite player on a big deal still outweighs a cheap role player.
+    const surplus = fvSum - (salarySum - getIncomingRetained(teamName));
+    const value = fvSum + SURPLUS_WEIGHT * surplus;
     return { value, missingFV };
   }
 

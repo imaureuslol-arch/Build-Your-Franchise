@@ -6,6 +6,6 @@ import { loadPickPlayers, teamPowerRatings } from "@/lib/picks";
  * each team's power rating (1-100) keyed by team name.
  */
 export async function GET() {
-  const [picks, power] = await Promise.all([loadPickPlayers(), teamPowerRatings()]);
+  const [picks, power] = await Promise.all([loadPickPlayers(), teamPowerRatings(process.env.SLEEPER_LEAGUE_ID ?? "")]);
   return Response.json({ picks, power });
 }
