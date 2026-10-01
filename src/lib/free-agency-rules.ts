@@ -17,9 +17,3 @@ export interface FreeAgencyAward {
   player_name: string; team_name: string | null; years: number[];
   amounts: Record<string, number>; note: string | null; awarded_at: string;
 }
-export function countdown(deadline: string, now: number): string {
-  const seconds = Math.max(0, Math.ceil((Date.parse(deadline) - now) / 1000));
-  const d = Math.floor(seconds / 86400), h = Math.floor(seconds % 86400 / 3600);
-  const m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
-  return d + 'd ' + String(h).padStart(2, '0') + 'h ' + String(m).padStart(2, '0') + 'm ' + String(s).padStart(2, '0') + 's';
-}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Select from "./Select";
 import { SALARY_YEARS, getCurrentSeasonYear } from "@/lib/types";
 import { refreshLeague } from "@/lib/hooks";
 
@@ -89,9 +90,8 @@ function ContractForm({ player, teams, save }: { player: ContractPlayer; teams: 
   return <form onSubmit={submit} className="space-y-4 border-t border-border pt-4">
     <h3 className="text-lg">{player.name}</h3>
     <label className="block text-sm">Team
-      <select className={field + " mt-1"} value={teamId} onChange={e => setTeamId(e.target.value)}>
-        <option value="">Free Agency</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
+      <Select className="mt-1" ariaLabel="Team" value={teamId} onChange={setTeamId}
+        options={[{ value: "", label: "Free Agency" }, ...teams.map(t => ({ value: String(t.id), label: t.name }))]} />
     </label>
     <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
       {SALARY_YEARS.map(y => <label key={y} className="text-xs text-text-muted">{seasonLabel(y)} · $M
@@ -138,9 +138,8 @@ function DeadCapForm({ entries, teams, save }: { entries: DeadCap[]; teams: Team
   return <details className="border border-border bg-surface rounded-sm p-4 space-y-4">
     <summary className="cursor-pointer font-semibold">Dead Cap</summary>
     <label className="block text-sm">Team
-      <select className={field + " mt-1"} value={teamId} onChange={e => { setTeamId(e.target.value); reset(); }}>
-        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
+      <Select className="mt-1" ariaLabel="Team" value={teamId} onChange={v => { setTeamId(v); reset(); }}
+        options={teams.map(t => ({ value: String(t.id), label: t.name }))} />
     </label>
     <ul className="divide-y divide-border max-h-64 overflow-y-auto">
       {entries.filter(e => e.team_id === Number(teamId)).map(entry => <li key={entry.id} className="py-3 flex items-center justify-between gap-3 text-sm">
@@ -156,10 +155,10 @@ function DeadCapForm({ entries, teams, save }: { entries: DeadCap[]; teams: Team
         <input required maxLength={160} className={field + " mt-1"} value={label} onChange={e => setLabel(e.target.value)} placeholder="Player name / reason" />
       </label>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <label className="text-sm">Season<select className={field + " mt-1"} value={season} onChange={e => setSeason(Number(e.target.value))}>
-          {SALARY_YEARS.map(y => <option key={y} value={y}>{seasonLabel(y)}</option>)}</select></label>
-        <label className="text-sm">Type<select className={field + " mt-1"} value={kind} onChange={e => setKind(e.target.value)}>
-          <option value="charge">Charge</option><option value="credit">Retention credit</option></select></label>
+        <label className="text-sm">Season<Select className="mt-1" ariaLabel="Season" value={String(season)} onChange={v => setSeason(Number(v))}
+          options={SALARY_YEARS.map(y => ({ value: String(y), label: seasonLabel(y) }))} /></label>
+        <label className="text-sm">Type<Select className="mt-1" ariaLabel="Type" value={kind} onChange={setKind}
+          options={[{ value: "charge", label: "Charge" }, { value: "credit", label: "Retention credit" }]} /></label>
         <label className="text-sm">Amount · $M<input required type="number" min="0.000001" max="1000000" step="0.000001" className={field + " mt-1"} value={amount} onChange={e => setAmount(e.target.value)} /></label>
       </div>
       <p className="text-xs text-text-dim">Charges increase the team’s cap total. Retention credits reduce it.</p>

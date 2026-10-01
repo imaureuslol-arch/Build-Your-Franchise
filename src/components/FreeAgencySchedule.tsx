@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
-import { countdown, getWeightedValue, type FreeAgencyAward, type FreeAgencyRound } from "@/lib/free-agency-rules";
+import { getWeightedValue, type FreeAgencyAward, type FreeAgencyRound } from "@/lib/free-agency-rules";
+import CountdownClock from "./CountdownClock";
+import Select from "./Select";
 import { formatSalary } from "@/lib/types";
 import { refreshLeague } from "@/lib/hooks";
 
@@ -41,9 +43,7 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
           : "The commissioner has not set a deadline. Bidding is paused."}</p>
         {round.closes_at && <p className="text-xs text-text-dim mt-1">{Intl.DateTimeFormat().resolvedOptions().timeZone}</p>}
       </div>
-      {round.closes_at && !closed && <div role="timer" aria-label="Time until bidding closes" className="font-mono text-xl sm:text-2xl text-primary tabular-nums">
-        {countdown(round.closes_at, now)}
-      </div>}
+      {round.closes_at && !closed && <CountdownClock deadline={round.closes_at} now={now} />}
     </div>
     <p className="text-xs text-text-dim">{closed
       ? "Winning bids are listed below. A commissioner must apply each award; Sleeper moves remain manual."
@@ -70,10 +70,10 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
           : <>
             {top.length === 1 ? <p className="text-sm">Winner: <strong>{top[0].teamName}</strong> · {formatSalary(bestValue)} weighted</p>
               : <div className="space-y-2"><p className="text-sm">{top.length} bids tied at {formatSalary(bestValue)} weighted. Commissioner selection required.</p>
-                {canManage ? <select aria-label={`Choose tied winner for ${offers[0].playerName}`} className={input} value={choice}
-                  onChange={e => setChoices(old => ({ ...old, [id]: e.target.value }))}>
-                  <option value="">Choose a tied bid</option>{top.map(o => <option key={o.id} value={o.id}>{o.teamName} · {o.years.map(y => `${y}: ${formatSalary(o.amounts[y])}`).join(", ")}</option>)}
-                </select> : <p className="text-sm text-text-muted">{top.map(o => o.teamName).join(" / ")}</p>}
+                {canManage ? <Select ariaLabel={`Choose tied winner for ${offers[0].playerName}`} value={choice} placeholder="Choose a tied bid"
+                  onChange={v => setChoices(old => ({ ...old, [id]: v }))}
+                  options={top.map(o => ({ value: o.id, label: `${o.teamName} · ${o.years.map(y => `${y}: ${formatSalary(o.amounts[y])}`).join(", ")}` }))} />
+                  : <p className="text-sm text-text-muted">{top.map(o => o.teamName).join(" / ")}</p>}
               </div>}
             {winner && <p className="text-xs text-text-muted">{winner.years.map(y => `${y}: ${formatSalary(winner.amounts[y])}`).join(" · ")}</p>}
             {canManage && <div className="flex flex-wrap gap-3">

@@ -63,10 +63,14 @@
   --color-cap-under: var(--good);
   --color-cap-yellow: var(--warn);
   --color-cap-over: var(--bad);
-  --font-sans: var(--font-plex-sans);
-  --font-mono: var(--font-plex-mono);
-  --font-blocky: var(--font-barlow-condensed);
-  --font-varsity: var(--font-graduate);
+  /* Each stack ends in a generic family: anything the browser draws itself
+     (dropdown lists, date pickers) can't use the web font and would
+     otherwise fall back to a serif. */
+  --font-sans: var(--font-plex-sans), system-ui, "Segoe UI", sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, Consolas, monospace;
+  --font-blocky: var(--font-barlow-condensed), "Arial Narrow", sans-serif;
+  --font-varsity: var(--font-graduate), Georgia, serif;
+  --font-score: var(--font-orbitron), var(--font-plex-mono), monospace;
   --radius-sm: 2px;
 }
 
@@ -139,6 +143,56 @@ body {
 }
 .card-frame .card-head {
   border-bottom: 3px solid var(--teal-hi);
+}
+
+/* The dropdown list (src/components/Select.tsx): a dark panel in both themes. */
+.select-list {
+  background:
+    repeating-linear-gradient(-55deg, transparent 0 14px, rgb(255 255 255 / 0.03) 14px 16px),
+    var(--purple-deep);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.45);
+}
+
+/* Arena countdown (src/components/CountdownClock.tsx). */
+.scoreboard {
+  --lit: var(--teal-hi);
+}
+.scoreboard-final {
+  --lit: var(--bad);
+}
+.scoreboard-digits {
+  display: block;
+  min-width: 2.2ch;
+  padding: 0.35rem 0.55rem 0.3rem;
+  font-family: var(--font-score);
+  font-weight: 800;
+  font-size: clamp(1.6rem, 4.5vw, 2.6rem);
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--lit);
+  background: #07050b;
+  border: 1px solid color-mix(in srgb, var(--lit) 35%, transparent);
+  border-radius: 3px;
+  box-shadow: inset 0 0 14px rgb(0 0 0 / 0.9), 0 0 0 1px #000;
+  text-shadow:
+    0 0 6px color-mix(in srgb, var(--lit) 80%, transparent),
+    0 0 18px color-mix(in srgb, var(--lit) 45%, transparent);
+}
+.scoreboard-sep {
+  font-family: var(--font-score);
+  font-weight: 800;
+  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  line-height: 1.35;
+  color: var(--lit);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--lit) 70%, transparent);
+  animation: scoreboard-blink 1s steps(1, end) infinite;
+}
+@keyframes scoreboard-blink {
+  50% { opacity: 0.15; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scoreboard-sep { animation: none; }
 }
 
 /* Prevent iOS zoom on input focus */

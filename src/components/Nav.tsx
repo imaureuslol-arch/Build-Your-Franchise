@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useUserTeam } from "@/lib/user-context";
 import { useTeamOwners } from "@/lib/hooks";
+import Select from "./Select";
 
 const baseLinks = [
   { href: "/rosters", label: "Rosters" },
@@ -65,17 +66,15 @@ export default function Nav() {
       : "Not logged in";
 
   const viewAs = isWhitelisted && allTeams.length > 0 && (
-    <select
+    <Select
+      size="sm"
+      ariaLabel="View the site as another team"
       value={teamName ?? ""}
-      onChange={(e) => impersonate(e.target.value)}
-      className="bg-purple-deep border border-white/20 px-1.5 py-0.5 text-xs text-white/70 focus:outline-none focus:border-white"
-      title="View the site as another team"
-    >
-      <option value="" disabled>View as…</option>
-      {allTeams.map((t) => (
-        <option key={t} value={t}>{t}</option>
-      ))}
-    </select>
+      onChange={impersonate}
+      placeholder="View as…"
+      options={allTeams.map((t) => ({ value: t, label: t }))}
+      className="w-56"
+    />
   );
 
   return (

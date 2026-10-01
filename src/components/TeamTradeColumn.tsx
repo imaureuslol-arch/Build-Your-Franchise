@@ -2,6 +2,8 @@
 
 import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap, isPick, pickOriginalTeam, getCurrentSalary } from "@/lib/types";
 
+import Select from "./Select";
+
 /** Salary column: picks carry no salary until drafted. */
 const salaryText = (p: Player) => (isPick(p) ? "pick" : formatSalary(getCurrentSalary(p)));
 
@@ -54,14 +56,14 @@ export default function TeamTradeColumn({
     <div className="bg-surface rounded-sm border border-border flex flex-col">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
-          <select
+          <Select
+            ariaLabel="Team"
             value={teamName}
-            onChange={(e) => onTeamChange(e.target.value)}
-            className="bg-surface-light text-text border border-border rounded-sm px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="">Select Team</option>
-            {allTeams.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+            onChange={onTeamChange}
+            placeholder="Select team"
+            options={allTeams.map((t) => ({ value: t, label: t }))}
+            className="flex-1 min-w-0"
+          />
           {canRemove && (
             <button onClick={onRemove} className="text-text-dim hover:text-danger text-sm px-2">Remove</button>
           )}
@@ -102,19 +104,14 @@ export default function TeamTradeColumn({
                       </div>
                       {showDestPicker && (
                         <div className="mt-1">
-                          <select
+                          <Select
+                            size="sm"
+                            ariaLabel={`Send ${p.name} to`}
                             value={currentDest}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              onSetDestination(p.name, e.target.value);
-                            }}
-                            className="w-full bg-surface border border-border rounded px-2 py-0.5 text-xs text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
-                          >
-                            <option value="">Send to...</option>
-                            {otherTeamsInTrade.map((t) => (
-                              <option key={t} value={t}>{t}</option>
-                            ))}
-                          </select>
+                            onChange={(t) => onSetDestination(p.name, t)}
+                            placeholder="Send to…"
+                            options={otherTeamsInTrade.map((t) => ({ value: t, label: t }))}
+                          />
                         </div>
                       )}
                     </div>
