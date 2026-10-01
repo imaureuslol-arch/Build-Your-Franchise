@@ -1,0 +1,71 @@
+/** Server-only Sleeper messaging. Never retry a send with an uncertain outcome. */
+export class SleeperMessageError extends Error {}
+
+export async function sendSleeperDm(recipientId: string, text: string, clientId: string): Promise<void> {
+  const token = process.env.SLEEPER_TOKEN?.trim();
+  if (!token) throw new SleeperMessageError("Sleeper messaging is not configured.");
+  if (!/^\d+$/.test(recipientId)) throw new SleeperMessageError("This team has no valid Sleeper account.");
+  // One deadline covers account lookup, conversation lookup and the send.
+  const signal = AbortSignal.timeout(15_000);
+  async function request<T>(operationName: string, query: string, variables = {}): Promise<T> {
+    let response: Response;
+    try {
+      response = await fetch("https://sleeper.com/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", authorization: token!, "x-sleeper-graphql-op": operationName },
+        cache: "no-store", signal,
+        body: JSON.stringify({ operationName, query, variables }),
+      });
+    } catch {
+      throw new SleeperMessageError("Sleeper did not confirm delivery. Check the DM before sending again.");
+    }
+    const result = await response.json().catch(() => null);
+    if (response.status === 401 || (Array.isArray(result?.errors) && result.errors.some((e: { code?: string }) => e.code === "unauthorized"))) {
+      throw new SleeperMessageError("Sleeper rejected the connected account. The commissioner needs to reconnect it.");
+    }
+    if (!response.ok || result?.errors?.length || !result?.data) {
+      throw new SleeperMessageError("Sleeper did not confirm delivery. Check the DM before sending again.");
+    }
+    return result.data as T;
+  }
+
+  const { me } = await request<{ me: { user_id: string } | null }>("me", "query me { me { user_id } }");
+  if (!me?.user_id) throw new SleeperMessageError("Sleeper could not identify the connected account.");
+  const members = [...new Set([String(me.user_id), recipientId])];
+  const { get_dm_by_members: dm } = await request<{ get_dm_by_members: { dm_id: string; dm_type: string } | null }>(
+    "get_dm_by_members",
+    "query get_dm_by_members($members: [Snowflake]) { get_dm_by_members(members: $members) { dm_id dm_type } }",
+    { members },
+  );
+  if (dm) {
+    if (!dm.dm_id || dm.dm_type !== "single") throw new SleeperMessageError("Sleeper did not return a direct conversation.");
+    const { create_message: message } = await request<{ create_message: { message_id: string; parent_id: string; author_id: string; text: string } | null }>(
+      "create_message",
+      `mutation create_message($parent_id: Snowflake!, $parent_type: String!, $text: String, $client_id: String) {
+        create_message(parent_id: $parent_id, parent_type: $parent_type, text: $text, client_id: $client_id) {
+          message_id parent_id author_id text
+        }
+      }`,
+      { parent_id: dm.dm_id, parent_type: "dm", text, client_id: clientId },
+    );
+    if (!message?.message_id || String(message.parent_id) !== String(dm.dm_id)
+      || String(message.author_id) !== String(me.user_id) || message.text !== text) {
+      throw new SleeperMessageError("Sleeper did not confirm delivery. Check the DM before sending again.");
+    }
+  } else {
+    // Create the conversation and its first message together, rather than an empty DM.
+    const { create_dm: created } = await request<{ create_dm: { dm_id: string; dm_type: string; last_message_id: string; last_author_id: string; last_message_text: string } | null }>(
+      "create_dm",
+      `mutation create_dm($members: [Snowflake], $dm_type: String!, $message_text: String, $client_id: String) {
+        create_dm(members: $members, dm_type: $dm_type, message_text: $message_text, client_id: $client_id) {
+          dm_id dm_type last_message_id last_author_id last_message_text
+        }
+      }`,
+      { members, dm_type: "single", message_text: text, client_id: clientId },
+    );
+    if (!created?.dm_id || created.dm_type !== "single" || !created.last_message_id
+      || String(created.last_author_id) !== String(me.user_id) || created.last_message_text !== text) {
+      throw new SleeperMessageError("Sleeper did not confirm delivery. Check the DM before sending again.");
+    }
+  }
+}

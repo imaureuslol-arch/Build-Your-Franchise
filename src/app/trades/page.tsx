@@ -345,11 +345,12 @@ function TradesPage() {
         return;
       }
       handleReset();
-      setNotice(
+      const savedNotice =
         record
           ? "Trade recorded. Rosters are updated; make the same trade in Sleeper."
-          : countering ? "Counteroffer sent. The other teams must accept the revised terms." : "Trade proposed. The other teams can accept it below."
-      );
+          : countering ? "Counteroffer sent. The other teams must accept the revised terms." : "Trade proposed. The other teams can accept it below.";
+      const warnings: string[] = data.notifications?.warnings ?? [];
+      setNotice([savedNotice, ...warnings].join(" "));
       await loadTrades();
       window.dispatchEvent(new Event("byf-trades-changed"));
       if (record) window.location.reload();

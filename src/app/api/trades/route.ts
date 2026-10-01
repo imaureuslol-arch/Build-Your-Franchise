@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { audit, getViewer, isAnyCommish, notLoggedIn } from "@/lib/auth";
 import { checkTrade, createTrade, executeTrade, listTrades, type TradeInput } from "@/lib/trades";
 import { checkRosters } from "@/lib/sleeper-sync";
+import { notifyTradeOffer } from "@/lib/trade-notifications";
 
 /** GET — open proposals and the approved history. Public: trades are league news. */
 export async function GET() {
@@ -39,5 +40,7 @@ export async function POST(request: NextRequest) {
     if (process.env.SLEEPER_LEAGUE_ID) await checkRosters(process.env.SLEEPER_LEAGUE_ID).catch(() => {});
   }
   await audit(viewer, record ? "trade_recorded" : "trade_proposed", { id, trade });
-  return Response.json({ id }, { status: 201 });
+  const notifications = !record && viewer.teamId != null
+    ? await notifyTradeOffer(id, 0, viewer.teamId, trade, check.players) : undefined;
+  return Response.json({ id, notifications }, { status: 201 });
 }

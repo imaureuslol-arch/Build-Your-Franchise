@@ -5,6 +5,7 @@ import { checkTrade, executeTrade, type TradeInput } from "@/lib/trades";
 import { decodePickId, isPickId } from "@/lib/types";
 import { adminError } from "@/lib/admin-errors";
 import { checkRosters } from "@/lib/sleeper-sync";
+import { notifyTradeOffer } from "@/lib/trade-notifications";
 
 type Action = "accept" | "decline" | "cancel" | "approve" | "reject" | "counter";
 
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/trades/
     }
     try {
       let counter = null;
+      let counterCheck: Extract<Awaited<ReturnType<typeof checkTrade>>, { ok: true }> | null = null;
       if (action === "counter") {
         const input = body.trade;
         if (!input || !Array.isArray(input.teams) || !Array.isArray(input.items)
@@ -43,6 +45,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/trades/
         }
         const checked = await checkTrade(input);
         if (!checked.ok) return Response.json({errors:checked.errors}, {status:422});
+        counterCheck = checked;
         counter = {
           teams: input.teams.map(t => ({teamId:checked.teamIds.get(t.team), retained:t.retained})),
           items: input.items.map(i => {
@@ -55,7 +58,9 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/trades/
       const [result] = await sql`select byf_trade_reply(${id}::uuid, ${viewer.teamId}::int, ${body.revision}::int,
         ${action}, ${JSON.stringify(counter)}::jsonb) as result`;
       await audit(viewer, `trade_${action}`, {id, revision:body.revision, ...(counter ? {counter} : {})});
-      return Response.json(result.result);
+      const notifications = action === "counter" && counterCheck && body.trade && viewer.teamId != null
+        ? await notifyTradeOffer(id, result.result.revision, viewer.teamId, body.trade, counterCheck.players) : undefined;
+      return Response.json({ ...result.result, notifications });
     } catch (error) { return adminError(error); }
   }
 
