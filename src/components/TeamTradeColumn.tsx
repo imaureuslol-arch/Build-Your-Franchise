@@ -26,12 +26,14 @@ interface TeamTradeColumnProps {
   canRemove: boolean;
   /** Power rating (1-100) by team name, shown next to each pick's original team. */
   power?: Record<string, number>;
+  /** Each pick's projected slot and value, by pick id. */
+  pickValues?: Record<number, { fairValue: number; slot: number }>;
 }
 
 export default function TeamTradeColumn({
   teamName, allTeams, teamPlayers, playersOut, playersIn, otherTeamsInTrade,
   destinationMap, retainedSalary, incomingRetained, onTeamChange, onAddPlayerOut, onRemovePlayerOut, onSetDestination,
-  onRetainedChange, onRemove, canRemove, power = {},
+  onRetainedChange, onRemove, canRemove, power = {}, pickValues = {},
 }: TeamTradeColumnProps) {
   const currentCap = getTeamTotalCap(teamPlayers);
   const capStatus = getCapStatus(currentCap);
@@ -187,8 +189,9 @@ export default function TeamTradeColumn({
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-surface-light transition-colors text-left"
                     >
                       <span>{p.name}</span>
-                      <span className="text-text-dim font-mono text-xs" title="Original team's power rating (1-100). Lower = earlier pick.">
+                      <span className="text-text-dim font-mono text-xs text-right" title="Original team's power rating (1-100, lower = earlier pick), projected slot and value">
                         PWR {power[pickOriginalTeam(p)] ?? "–"}
+                        {pickValues[p.id] && <> · #{pickValues[p.id].slot} · ${pickValues[p.id].fairValue.toFixed(1)}M</>}
                       </span>
                     </button>
                   ))}

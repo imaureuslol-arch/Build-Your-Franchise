@@ -64,12 +64,14 @@ function TradesPage() {
   // Draft picks, as salary-free entries owned by their current team.
   const [picks, setPicks] = useState<Player[]>([]);
   const [power, setPower] = useState<Record<string, number>>({});
+  const [pickValues, setPickValues] = useState<Record<number, { fairValue: number; salary: number; slot: number }>>({});
   const loadPicks = useCallback(async () => {
     const res = await fetch("/api/picks");
     if (!res.ok) return;
     const data = await res.json();
     setPicks(data.picks);
     setPower(data.power ?? {});
+    setPickValues(data.values ?? {});
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -247,6 +249,15 @@ function TradesPage() {
     let fvSum = 0;
     let salarySum = 0;
     for (const p of incoming) {
+      // A pick counts at its projected slot: value, and that slot's rookie-scale salary.
+      if (isPick(p)) {
+        const pv = pickValues[p.id];
+        if (pv) {
+          fvSum += pv.fairValue * 1_000_000;
+          salarySum += pv.salary;
+        }
+        continue;
+      }
       const fv = playerValues[p.id]?.fairValue;
       if (fv == null) {
         if (p.name !== "Dead Cap" && !isPick(p)) missingFV.push(p.name);
@@ -412,6 +423,7 @@ function TradesPage() {
                 onRemove={() => removeTeam(i)}
                 canRemove={slots.length > 2}
                 power={power}
+                pickValues={pickValues}
               />
             </div>
           );
