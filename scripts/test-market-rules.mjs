@@ -35,9 +35,39 @@ try {
   await sql.transaction(base.split(/;\s*(?:\r?\n|$)/).filter(s=>s.trim()).map(s=>sql.query(s)));
   const migrations=readdirSync(new URL('../db/migrations/',import.meta.url)).filter(s=>s.endsWith('.sql')).sort();
   for (const file of migrations) {
+    if (file==='009-player-free-agency.sql') {
+      await sql`insert into teams(id,name) values(90,'Legacy bidding')`;
+      await sql`insert into players(id,name,fair_value) values(90,'Legacy low bid',20),(91,'Legacy premium bid',20)`;
+      await sql`update fa_rounds set closes_at=clock_timestamp()+interval '127 days' where id=1`;
+      await sql`insert into free_agent_offers(round_id,player_id,team_id,years,amounts,total_value,created_at) values
+        (1,90,90,'{2027}','{"2027":10000000}',10000000,clock_timestamp()-interval '2 hours'),
+        (1,90,90,'{2027}','{"2027":40000000}',40000000,clock_timestamp()-interval '1 hour'),
+        (1,91,90,'{2027}','{"2027":40000000}',40000000,clock_timestamp()-interval '2 hours')`;
+    }
+    if (file==='010-independent-free-agency-clock.sql') {
+      equal(Number((await sql`select extract(epoch from accepts_at-first_bid_at)/86400 days from fa_player_auctions where player_id=90`)[0].days),30.5);
+      equal(Number((await sql`select extract(epoch from accepts_at-first_bid_at)/86400 days from fa_player_auctions where player_id=91`)[0].days),3);
+      // Reproduce the deployed bug, including a subsequent twelve-hour rebid.
+      await sql`update fa_player_auctions a set accepts_at=r.closes_at+case when a.player_id=90 then interval '12 hours' else interval '0 hours' end
+        from fa_rounds r where r.id=a.round_id and a.player_id in (90,91)`;
+    }
     const source=readFileSync(new URL('../db/migrations/'+file,import.meta.url),'utf8');
     await sql.transaction(source.split(/\r?\n-- statement\r?\n/).filter(s=>s.trim()).map(s=>sql.query(s)));
   }
+  equal(Number((await sql`select extract(epoch from accepts_at-first_bid_at)/86400 days from fa_player_auctions where player_id=90`)[0].days),30.5);
+  equal(Number((await sql`select extract(epoch from accepts_at-first_bid_at)/86400 days from fa_player_auctions where player_id=91`)[0].days),3);
+  const legacyDeadline=(await auction(90)).accepts_at;
+  await action({action:'deadline',roundId:1,closesAt:new Date(Date.now()+60*86400000).toISOString()});
+  equal((await auction(90)).accepts_at,legacyDeadline);
+  // Repeating the correction must not reset deadlines or write another repair.
+  const repairSource=readFileSync(new URL('../db/migrations/010-independent-free-agency-clock.sql',import.meta.url),'utf8');
+  await sql.transaction(repairSource.split(/\r?\n-- statement\r?\n/).filter(s=>s.trim()).map(s=>sql.query(s)));
+  equal((await auction(90)).accepts_at,legacyDeadline);
+  equal((await sql`select count(*)::int n from audit_log where action='fa_player_deadline_corrected'`)[0].n,2);
+  await sql`delete from fa_player_auctions where player_id in (90,91)`;
+  await sql`delete from free_agent_offers where player_id in (90,91)`;
+  await sql`delete from players where id in (90,91)`;
+  await sql`delete from teams where id=90`;
   // New migrations must also be repeat-safe.
   for (const file of migrations.filter(s=>/^00[789]-/.test(s))) {
     const source=readFileSync(new URL('../db/migrations/'+file,import.meta.url),'utf8');
@@ -73,6 +103,8 @@ try {
   let first=await auction(1);
   assert(Math.abs((Date.parse(first.accepts_at)-Date.parse(first.first_bid_at))/86400000-3)<.00001);checks++;
   const firstDeadline=Date.parse(first.accepts_at);
+  await action({action:'deadline',roundId:1,closesAt:new Date(Date.now()+90*86400000).toISOString()});
+  equal((await auction(1)).accepts_at,first.accepts_at);
   await action(bid(1,50000000),2);
   let second=await auction(1);
   equal(Date.parse(second.accepts_at)-firstDeadline,12*3600000);

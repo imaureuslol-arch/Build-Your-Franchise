@@ -1,65 +1,26 @@
--- Player-specific auctions. The first offer sets the deadline; every later
--- offer adds twelve hours to that same deadline. Awards remain manual.
-create table if not exists restricted_free_agents (
-  player_id int primary key references players(id) on delete cascade,
-  owner_key text not null,
-  team_id int not null references teams(id),
-  expires_season int not null
-);
+-- Repair only unprocessed legacy auctions that inherited the league cutoff.
+-- Keep the original first-bid date and all twelve-hour rebid additions.
+select pg_advisory_xact_lock(733016);
 -- statement
-create table if not exists fa_player_auctions (
-  round_id int not null references fa_rounds(id),
-  player_id int not null references players(id) on delete cascade,
-  first_bid_at timestamptz not null,
-  accepts_at timestamptz not null,
-  fair_value bigint not null,
-  rfa_owner_key text,
-  matched_offer_id uuid references free_agent_offers(id),
-  matched_team_id int references teams(id),
-  matched_at timestamptz,
-  primary key(round_id,player_id)
-);
--- statement
-create or replace function byf_fa_days(weighted numeric, fair numeric)
-returns numeric language sql immutable as $$
-  select case when fair <= 0 then 3
-    when weighted >= greatest(2 * fair, fair + 10000000) then 3
-    when weighted <= 0.5 * fair then 30
-    when weighted < 0.8 * fair then 30 - 16 * (weighted / fair - 0.5) / 0.3
-    else 14 - 11 * (weighted - 0.8 * fair) / (greatest(2 * fair, fair + 10000000) - 0.8 * fair) end
-$$;
--- statement
--- Existing players use the first bid's value and date, plus twelve hours
--- for each later bid. The league deadline is independent.
-insert into fa_player_auctions(round_id,player_id,first_bid_at,accepts_at,fair_value)
-  select o.round_id,o.player_id,min(o.created_at),
-    min(o.created_at)+byf_fa_days((array_agg(byf_bid_value(o.years,o.amounts) order by o.created_at,o.id))[1],
-      (coalesce(p.fair_value,0)*1000000)::numeric)::double precision*interval '1 day'
-      +(count(*)-1)*interval '12 hours',
-    round(coalesce(p.fair_value,0)*1000000)::bigint
-  from free_agent_offers o join players p on p.id=o.player_id
-  group by o.round_id,o.player_id,p.fair_value on conflict do nothing;
--- statement
-create or replace function byf_refresh_rfas(current_season int)
-returns void language plpgsql set search_path from current as $$
-declare p record;
-begin
-  perform pg_advisory_xact_lock(733016);
-  for p in select player.id,player.team_id,coalesce('sleeper:' || t.sleeper_user_id,'team:' || t.id) as owner_key,(select max(y) from unnest(e.years) y) as expires_season
-    from players player join teams t on t.id=player.team_id
-    join lateral (select ext.* from extensions ext where ext.player_id=player.id and ext.accepted
-      and ext.contract_version=player.contract_version
-      order by ext.created_at desc limit 1) e on true
-    where (select max(y) from unnest(e.years) y)<current_season
-      and not exists(select 1 from contracts c where c.player_id=player.id and c.season>=current_season)
-    for update of player loop
-    insert into restricted_free_agents(player_id,owner_key,team_id,expires_season)
-      values(p.id,p.owner_key,p.team_id,p.expires_season)
-      on conflict(player_id) do update set owner_key=excluded.owner_key,team_id=excluded.team_id,expires_season=excluded.expires_season;
-    update players set team_id=null where id=p.id;
-    insert into audit_log(action,detail) values('rfa_contract_expired',jsonb_build_object('playerId',p.id,'ownerKey',p.owner_key));
-  end loop;
-end $$;
+with offers as (
+  select round_id,player_id,min(created_at) as first_bid_at,count(*) as bids,
+    (array_agg(byf_bid_value(years,amounts) order by created_at,id))[1] as first_value
+  from free_agent_offers group by round_id,player_id
+), repaired as (
+  update fa_player_auctions a set accepts_at=o.first_bid_at
+      +byf_fa_days(o.first_value,a.fair_value)::double precision*interval '1 day'
+      +(o.bids-1)*interval '12 hours'
+  from offers o,fa_rounds r
+  where a.round_id=o.round_id and a.player_id=o.player_id and r.id=a.round_id
+    and r.closes_at is not null and a.first_bid_at=o.first_bid_at
+    and a.accepts_at>=r.closes_at
+    and mod(extract(epoch from a.accepts_at-r.closes_at),43200)=0
+    and a.matched_offer_id is null
+    and not exists(select 1 from fa_awards award where award.round_id=a.round_id and award.player_id=a.player_id)
+  returning a.round_id,a.player_id,a.accepts_at
+)
+insert into audit_log(action,detail)
+  select 'fa_player_deadline_corrected',to_jsonb(repaired) from repaired;
 -- statement
 create or replace function byf_fa_action(body jsonb, actor uuid, actor_team int, current_season int)
 returns jsonb language plpgsql set search_path from current as $$

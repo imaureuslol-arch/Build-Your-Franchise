@@ -9,6 +9,7 @@ import { refreshLeague } from "@/lib/hooks";
 interface Bid { id: string; playerId: string; playerName: string; teamName: string; years: number[]; amounts: Record<string, number>; totalValue: number }
 interface Props { round: FreeAgencyRound; now: number; canManage: boolean; bids: Bid[]; awards: FreeAgencyAward[]; auctions: PlayerAuction[]; ownerKey?: string; refresh: () => Promise<void> }
 const button = "px-3 py-2 bg-primary text-white rounded-sm text-sm disabled:opacity-40";
+const input = "bg-background border border-border rounded-sm px-3 py-2 text-sm w-full";
 
 export default function FreeAgencySchedule({ round, now, canManage, bids, awards, auctions, ownerKey, refresh }: Props) {
   const closed = auctions.some(a => Date.parse(a.accepts_at) <= now);
@@ -22,7 +23,7 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
     list.push(bid); groups.set(bid.playerId, list);
   }
   const pending = [...groups.keys()].filter(id => !awards.some(a => String(a.player_id) === id)).length;
-  async function act(key: string, body: {action:string; playerId?:number; offerId?:string; note?:string}) {
+  async function act(key: string, body: {action:string; playerId?:number; offerId?:string; note?:string; closesAt?:string}) {
     setBusy(key); setError("");
     try {
       const res = await fetch(body.action === "match" ? "/api/free-agent-offers/match" : "/api/commissioner/free-agency", {
@@ -37,11 +38,17 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
   }
   return <section className="mb-6 border border-border rounded-sm bg-surface p-4 sm:p-5 space-y-4">
     <div className="flex flex-wrap justify-between gap-4 items-center">
-      <div><h2 className="text-xl">Player deadlines</h2>
-        <p className="text-sm text-text-muted mt-1">Higher Bid Values shorten the time the player will spend before accepting them. New bids add 12 hours to countdown.</p>
+      <div><h2 className="text-xl">Free-agency deadline</h2>
+        <p className="text-sm text-text-muted mt-1">{round.closes_at
+          ? new Date(round.closes_at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })
+          : "The commissioner has not set a deadline."}</p>
       </div>
+      {round.closes_at && <CountdownClock deadline={round.closes_at} now={now} label="Time until the free-agency deadline" />}
     </div>
+    <p className="text-sm text-text-muted">Higher Bid Values shorten the time the player will spend before accepting them. New bids add 12 hours to countdown.</p>
     {error && <p role="alert" className="text-sm text-cap-over">{error}</p>}
+    {canManage && <DeadlineForm key={round.id + ":" + round.closes_at} deadline={round.closes_at}
+      disabled={busy != null} submit={closesAt => act("deadline", {action:"deadline", closesAt})} />}
     {canManage && <button className={button} disabled={busy != null || pending > 0}
       onClick={() => act("new_round", {action:"new_round"})}>Start next round</button>}
     {canManage && pending > 0 && <p className="text-xs text-text-dim">Apply or dismiss the remaining awards before starting a new round.</p>}
@@ -98,4 +105,15 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
       })}
     </div>}
   </section>;
+}
+
+function DeadlineForm({ deadline, disabled, submit }: { deadline: string | null; disabled: boolean; submit: (date: string) => Promise<void> }) {
+  const localDate = deadline ? new Date(Date.parse(deadline) - new Date(deadline).getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : "";
+  const [value, setValue] = useState(localDate);
+  return <form className="flex flex-col sm:flex-row sm:items-end gap-3" onSubmit={e => { e.preventDefault(); if (value) void submit(new Date(value).toISOString()); }}>
+    <label className="text-xs text-text-muted flex-1">Free-agency deadline · {Intl.DateTimeFormat().resolvedOptions().timeZone}
+      <input aria-label="Free-agency deadline" className={input + " mt-1"} type="datetime-local" required value={value} disabled={disabled} onChange={e => setValue(e.target.value)} />
+    </label>
+    <button className={button} disabled={disabled || !value}>Save deadline</button>
+  </form>;
 }
