@@ -10,6 +10,7 @@ import { Player, FREE_AGENCY_TEAM, getCurrentSalary, isPick, isPickId } from "@/
 import TeamTradeColumn from "@/components/TeamTradeColumn";
 import TradeSidebar from "@/components/TradeSidebar";
 import TradeProposals, { type TradeView } from "@/components/TradeProposals";
+import type { PickValue } from "@/lib/pick-value";
 
 // How much a bargain contract adds on top of the player's own value.
 const SURPLUS_WEIGHT = 0.25;
@@ -66,7 +67,7 @@ function TradesPage() {
   const [picksLoaded, setPicksLoaded] = useState(false);
   const populatedQuery = useRef<string | null>(null);
   const [power, setPower] = useState<Record<string, number>>({});
-  const [pickValues, setPickValues] = useState<Record<number, { fairValue: number; salary: number; slot: number }>>({});
+  const [pickValues, setPickValues] = useState<Record<number, PickValue>>({});
   const loadPicks = useCallback(async () => {
     const res = await fetch("/api/picks");
     if (!res.ok) return;

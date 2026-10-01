@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers, useTeamOwners } from "@/lib/hooks";
+import PickBadge from "@/components/PickBadge";
+import type { PickValue } from "@/lib/pick-value";
 import {
   Player,
   TeamSummary,
@@ -31,12 +33,14 @@ export default function RostersPage() {
   // Draft picks each team owns, shown on its card back.
   const [picks, setPicks] = useState<Player[]>([]);
   const [power, setPower] = useState<Record<string, number>>({});
+  const [pickValues, setPickValues] = useState<Record<number, PickValue>>({});
   useEffect(() => {
     fetch("/api/picks")
       .then((r) => (r.ok ? r.json() : { picks: [], power: {} }))
       .then((d) => {
         setPicks(d.picks);
         setPower(d.power ?? {});
+        setPickValues(d.values ?? {});
       })
       .catch(() => {});
   }, []);
@@ -370,8 +374,8 @@ export default function RostersPage() {
               <div className="flex items-baseline justify-between gap-2 mb-2">
                 <h3 className="text-lg text-text">Draft Picks</h3>
                 <span className="text-xs text-text-dim">
-                  PWR = original team&apos;s power rating, 1–100. Lower means an earlier pick.
-                  {power[openTeam.team] != null && <> This team: {power[openTeam.team]}.</>}
+                  PWR 1–100: lower means an earlier pick. PROJ uses that draft year&apos;s aging/retirement forecast.
+                  {power[openTeam.team] != null && <> Current team: {power[openTeam.team]}.</>}
                 </span>
               </div>
               {picks.filter((p) => p.team === openTeam.team).length === 0 ? (
@@ -383,7 +387,7 @@ export default function RostersPage() {
                     .map((p) => (
                       <li key={p.id} className="text-sm border border-border bg-surface-light px-2 py-1 rounded-sm">
                         {p.name}
-                        <span className="ml-2 text-xs font-mono text-text-dim">PWR {power[pickOriginalTeam(p)] ?? "–"}</span>
+                        <PickBadge value={pickValues[p.id]} currentPower={power[pickOriginalTeam(p)]} className="ml-2" />
                       </li>
                     ))}
                 </ul>

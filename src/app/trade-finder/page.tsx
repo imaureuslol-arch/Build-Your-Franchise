@@ -7,9 +7,11 @@ import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
 import { Player, FREE_AGENCY_TEAM, formatSalary, getCurrentSalary, isDeadCap, isPick } from "@/lib/types";
 import { findTrades, FinderFilters, PlayerRule, ScoutInfo, SearchProgress, TradeMatch } from "@/lib/trade-finder";
+import type { PickValue } from "@/lib/pick-value";
+import { pickProjectionDescription } from "@/components/PickBadge";
 import "./finder.css";
 
-interface PickInfo { fairValue: number; salary: number; slot: number }
+type PickInfo = PickValue;
 const defaults: FinderFilters = { playersMin: 1, playersMax: 2, picksMin: 0, picksMax: 0, pickRound: "any", salaryMax: 80000000, valueTolerance: .25, rules: [], sort: "value" };
 const options = (values: number[], suffix = "") => values.map((n) => ({ value: String(n), label: `${n}${suffix}` }));
 const positions = ["PG", "SG", "SF", "PF", "C"];
@@ -94,7 +96,7 @@ export default function TradeFinderPage() {
   function assetCard(p: Player, selectable: boolean) {
     const pick = isPick(p), selected = offerIds.includes(p.id), scout = info[p.id], valuation = valueOf(p);
     const content = <>
-      <span className="finder-card-top"><span>{pick ? "DRAFT PICK" : scout?.positions.join(" / ") || "PLAYER"}</span><span>{selectable ? (selected ? "✓ IN OFFER" : valuation == null ? "UNVALUED" : "+ ADD") : pick ? "PICK" : "PLAYER"}</span></span>
+      <span className="finder-card-top"><span>{pick ? `${pickInfo[p.id]?.yearsAway ? "PROJ " : ""}PWR ${pickInfo[p.id]?.power ?? "—"}` : scout?.positions.join(" / ") || "PLAYER"}</span><span>{selectable ? (selected ? "✓ IN OFFER" : valuation == null ? "UNVALUED" : "+ ADD") : pick ? "PICK" : "PLAYER"}</span></span>
       <span className="finder-card-name">{p.name}</span>
       <span className="finder-card-stats">
         <span><small>{pick ? "PROJ. SLOT" : "FPPG"}</small><b>{pick ? `#${pickInfo[p.id]?.slot ?? "—"}` : p.ppg?.toFixed(1) ?? "—"}</b></span>
@@ -103,8 +105,9 @@ export default function TradeFinderPage() {
       </span>
       <span className="finder-card-value">VALUE <b>{valuation == null ? "Unavailable" : formatSalary(valuation * 1000000)}</b></span>
     </>;
-    return selectable ? <button key={p.id} type="button" className={`finder-asset ${pick ? "finder-pick" : ""} ${selected ? "finder-selected" : ""}`} aria-pressed={selected} disabled={valuation == null || !ready} onClick={() => { invalidate(); setOfferIds((ids) => selected ? ids.filter((id) => id !== p.id) : [...ids, p.id]); }}>{content}</button>
-      : <div key={p.id} className={`finder-asset ${pick ? "finder-pick" : ""}`}>{content}</div>;
+    const description = pick && pickInfo[p.id] ? pickProjectionDescription(pickInfo[p.id]) : undefined;
+    return selectable ? <button key={p.id} type="button" title={description} className={`finder-asset ${pick ? "finder-pick" : ""} ${selected ? "finder-selected" : ""}`} aria-pressed={selected} disabled={valuation == null || !ready} onClick={() => { invalidate(); setOfferIds((ids) => selected ? ids.filter((id) => id !== p.id) : [...ids, p.id]); }}>{content}</button>
+      : <div key={p.id} title={description} className={`finder-asset ${pick ? "finder-pick" : ""}`}>{content}</div>;
   }
   const field = (label: string, value: string, onChange: (v: string) => void, opts: { value: string; label: string }[], ariaLabel = label) => <label className="finder-label">{label}<Select value={value} onChange={onChange} options={opts} ariaLabel={ariaLabel} /></label>;
 
@@ -130,7 +133,7 @@ export default function TradeFinderPage() {
           <input aria-label="Search your assets" placeholder={tab === "picks" ? "Find a season or original team…" : "Find a player…"} value={rosterSearch} onChange={(e) => setRosterSearch(e.target.value)} className="finder-input" />
           {!!offer.length && <div className="finder-offer-tray" aria-label="Selected offer">{offer.map((p) => <button key={p.id} type="button" onClick={() => { invalidate(); setOfferIds((ids) => ids.filter((id) => id !== p.id)); }} aria-label={`Remove ${p.name} from offer`}>{p.name} <span>×</span></button>)}</div>}
           <div className="finder-roster">{!ready && !error ? <p className="finder-empty">Loading rosters, picks and scouting data…</p> : !team ? <p className="finder-empty">Choose a team, then tap cards to build an offer.</p> : !visibleAssets.length ? <p className="finder-empty">No {tab === "picks" ? "picks" : "players"} found.</p> : visibleAssets.map((p) => assetCard(p, true))}</div>
-          {tab === "picks" && <p className="finder-footnote">*Projected rookie cost when drafted. Picks cost $0 in this trade.</p>}
+          {tab === "picks" && <p className="finder-footnote">PROJ PWR forecasts that draft year using the current roster&apos;s development, aging and retirement risk. Future value is discounted 20% per year beyond the next draft. *Rookie cost is projected; picks cost $0 now.</p>}
         </div>
       </section>
       <section className="finder-panel">

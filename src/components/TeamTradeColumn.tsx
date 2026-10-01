@@ -3,6 +3,8 @@
 import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap, isPick, pickOriginalTeam, getCurrentSalary } from "@/lib/types";
 
 import Select from "./Select";
+import PickBadge from "./PickBadge";
+import type { PickValue } from "@/lib/pick-value";
 
 /** Salary column: picks carry no salary until drafted. */
 const salaryText = (p: Player) => (isPick(p) ? "pick" : formatSalary(getCurrentSalary(p)));
@@ -27,7 +29,7 @@ interface TeamTradeColumnProps {
   /** Power rating (1-100) by team name, shown next to each pick's original team. */
   power?: Record<string, number>;
   /** Each pick's projected slot and value, by pick id. */
-  pickValues?: Record<number, { fairValue: number; slot: number }>;
+  pickValues?: Record<number, PickValue>;
 }
 
 export default function TeamTradeColumn({
@@ -189,10 +191,7 @@ export default function TeamTradeColumn({
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-surface-light transition-colors text-left"
                     >
                       <span>{p.name}</span>
-                      <span className="text-text-dim font-mono text-xs text-right" title="Original team's power rating (1-100, lower = earlier pick), projected slot and value">
-                        PWR {power[pickOriginalTeam(p)] ?? "–"}
-                        {pickValues[p.id] && <> · #{pickValues[p.id].slot} · ${pickValues[p.id].fairValue.toFixed(1)}M</>}
-                      </span>
+                      <PickBadge value={pickValues[p.id]} currentPower={power[pickOriginalTeam(p)]} className="text-right" />
                     </button>
                   ))}
                 </div>

@@ -21,24 +21,14 @@
 
 import { sql } from "./db";
 import { getHardCap } from "./types";
+import { ageGrowth } from "./aging";
+export { ageGrowth } from "./aging";
 
 const PROJECTION_SHARE = 0.7;
 const SEASON_WEIGHTS = [1, 0.85, 0.72, 0.6];
 const MODEL_SHARE = 0.6;
 const LEAGUE_VALUE_SHARE = 1.1;
 const UNKNOWN_HEALTH_GP = 60; // rookies with no NBA games yet
-
-/** Change in production from one season to the next, by the age he'll be. */
-export function ageGrowth(age: number): number {
-  if (age <= 20) return 0.08;
-  if (age <= 22) return 0.06;
-  if (age <= 24) return 0.04;
-  if (age <= 26) return 0.02;
-  if (age <= 29) return 0;
-  if (age <= 31) return -0.03;
-  if (age <= 33) return -0.06;
-  return -0.1;
-}
 
 /** Unscaled value of one season at a given FPPG. */
 function production(fppg: number): number {

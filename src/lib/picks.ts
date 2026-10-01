@@ -10,6 +10,7 @@
 
 import { sql } from "./db";
 import { pickPlayerId, type Player } from "./types";
+import { STARTERS, DEPTH, toRating } from "./team-projection";
 
 const API = "https://api.sleeper.app/v1";
 const FUTURE_DRAFTS = 3;
@@ -161,17 +162,7 @@ export async function loadPickPlayers(): Promise<Player[]> {
   }));
 }
 
-const STARTERS = 8; // PG, SG, SF, PF, C + 3 UTIL
-const DEPTH = 2; // next two players, at half weight
 const FULL_SEASON_WEIGHT_AT_WEEK = 10;
-
-/** Scale scores so the best is 100 and the worst 1. */
-function toRating(scores: Map<string, number>): Map<string, number> {
-  const v = [...scores.values()];
-  const lo = Math.min(...v);
-  const hi = Math.max(...v);
-  return new Map([...scores].map(([k, s]) => [k, hi > lo ? 1 + (99 * (s - lo)) / (hi - lo) : 50]));
-}
 
 /**
  * Team power rating, 1-100: how strong a team is right now, not in four
