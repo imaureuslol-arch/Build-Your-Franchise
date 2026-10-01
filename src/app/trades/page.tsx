@@ -10,6 +10,8 @@ import { Player, FREE_AGENCY_TEAM, getCurrentSalary, isPick, isPickId } from "@/
 import TeamTradeColumn from "@/components/TeamTradeColumn";
 import TradeSidebar from "@/components/TradeSidebar";
 import TradeProposals, { type TradeView } from "@/components/TradeProposals";
+import SleeperTrades from "@/components/SleeperTrades";
+import type { SleeperTradeView } from "@/lib/sleeper-trades";
 import type { PickValue } from "@/lib/pick-value";
 
 // How much a bargain contract adds on top of the player's own value.
@@ -54,6 +56,7 @@ function TradesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [countering, setCountering] = useState<TradeView | null>(null);
+  const [reviewingSleeper, setReviewingSleeper] = useState<string | null>(null);
 
   const loadTrades = useCallback(async () => {
     const res = await fetch("/api/trades");
@@ -359,6 +362,7 @@ function TradesPage() {
 
   function handleReset() {
     setCountering(null);
+    setReviewingSleeper(null);
     setSlots([{ team: "", playersOut: [], retainedSalary: 0 }, { team: "", playersOut: [], retainedSalary: 0 }]);
     setDestinationMap({});
     setValidationResult(null);
@@ -371,8 +375,24 @@ function TradesPage() {
       setNotice("A player or pick in this trade changed ownership. Refresh before countering."); return;
     }
     setCountering(trade);
+    setReviewingSleeper(null);
     setSlots(trade.teams.map(t => ({team:t.team, retainedSalary:t.retained,
       playersOut:trade.items.filter(i => i.from === t.team).map(i => assets.get(i.playerId)!)})));
+    setDestinationMap(Object.fromEntries(trade.items.map(i => [`${i.from}:${assets.get(i.playerId)!.name}`, i.to])));
+    setValidationResult(null);
+    setNotice(null);
+  }
+
+  function handleSleeperReview(trade: SleeperTradeView) {
+    if (!picksLoaded) { setNotice("Picks are still loading. Try again shortly."); return; }
+    const assets = new Map([...allPlayers, ...picks].map(p => [p.id, p]));
+    if (trade.items.some(i => !assets.has(i.playerId) || assets.get(i.playerId)!.team !== i.from)) {
+      setNotice("A player or pick changed ownership. Refresh before checking this trade."); return;
+    }
+    setCountering(null);
+    setReviewingSleeper(trade.id);
+    setSlots(trade.teams.map(t => ({ team: t.team, retainedSalary: 0,
+      playersOut: trade.items.filter(i => i.from === t.team).map(i => assets.get(i.playerId)!) })));
     setDestinationMap(Object.fromEntries(trade.items.map(i => [`${i.from}:${assets.get(i.playerId)!.name}`, i.to])));
     setValidationResult(null);
     setNotice(null);
@@ -410,6 +430,11 @@ function TradesPage() {
       </div>
 
       <TradeProposals trades={openTrades} myTeam={myTeam} isCommish={isCommish} onChange={loadTrades} onCounter={handleCounter} />
+      <SleeperTrades onReview={handleSleeperReview} />
+      {reviewingSleeper && <div className="mb-4 border border-primary rounded-sm p-3 text-sm">
+        Accepted Sleeper trade loaded. Enter agreed retention, then validate.
+        <button className="ml-3 underline" onClick={handleReset}>Close</button>
+      </div>}
       {countering && <div className="mb-4 border border-primary rounded-sm p-3 text-sm">
         Counteroffer to {countering.proposed_by}. Previous acceptances will be cleared when you send it.
         <button className="ml-3 underline" onClick={handleReset}>Cancel counteroffer</button>
@@ -522,7 +547,7 @@ function TradesPage() {
           <button onClick={handleValidate} className="flex-1 sm:flex-none min-w-[140px] px-4 sm:px-6 py-2.5 bg-primary text-white rounded-sm font-medium hover:bg-primary-hover transition-colors">
             Validate Trade
           </button>
-          {myTeam && (
+          {myTeam && !reviewingSleeper && (
             <button
               onClick={() => submit(false)}
               disabled={!inTrade || submitting}

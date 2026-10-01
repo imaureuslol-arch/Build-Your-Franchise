@@ -452,7 +452,7 @@ export default function FreeAgencyPage() {
                         : `Would rank #${rank} of ${existing.length + 1}. Top bid is ${formatSalary(topWeighted)} weighted.`}
                     </div>
                     <p className="mt-2">{selectedAuction
-                      ? "Submitting this bid adds 12 hours to the existing deadline."
+                      ? "Higher bids can shorten this timer. Bids from a different manager add 12 hours."
                       : `First-bid countdown: ${acceptanceDays(myWeighted, (values[selectedPlayer.id]?.fairValue ?? 0)*1000000).toFixed(1)} days.`}</p>
                   </div>
                 );

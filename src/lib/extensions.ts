@@ -88,7 +88,7 @@ export function respond(ratio: number, offersUsed: number, snapped: boolean, tie
   const remaining = Math.max(0, MAX_OFFERS - offersUsed);
   const left = remaining === 1 ? "This is your last chance." : `${remaining} offers remaining`;
 
-  const acceptAt = 0.95;
+  const acceptAt = 0.90;
   if (!snapped && ratio >= 1.3) return { accepted: true, reply: dialogueLine(tier, "overpaid", seed) };
   if (ratio >= acceptAt) {
     return {

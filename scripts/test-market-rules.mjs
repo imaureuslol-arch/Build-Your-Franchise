@@ -54,7 +54,7 @@ try {
     const source=readFileSync(new URL('../db/migrations/'+file,import.meta.url),'utf8');
     await sql.transaction(source.split(/\r?\n-- statement\r?\n/).filter(s=>s.trim()).map(s=>sql.query(s)));
   }
-  equal(Number((await sql`select extract(epoch from accepts_at-first_bid_at)/86400 days from fa_player_auctions where player_id=90`)[0].days),30.5);
+  equal(Number((await sql`select extract(epoch from accepts_at-first_bid_at)/86400 days from fa_player_auctions where player_id=90`)[0].days),3);
   equal(Number((await sql`select extract(epoch from accepts_at-first_bid_at)/86400 days from fa_player_auctions where player_id=91`)[0].days),3);
   const legacyDeadline=(await auction(90)).accepts_at;
   await action({action:'deadline',roundId:1,closesAt:new Date(Date.now()+60*86400000).toISOString()});
@@ -64,18 +64,23 @@ try {
   await sql.transaction(repairSource.split(/\r?\n-- statement\r?\n/).filter(s=>s.trim()).map(s=>sql.query(s)));
   equal((await auction(90)).accepts_at,legacyDeadline);
   equal((await sql`select count(*)::int n from audit_log where action='fa_player_deadline_corrected'`)[0].n,2);
+  const higherBidRepair=readFileSync(new URL('../db/migrations/011-higher-bid-deadlines.sql',import.meta.url),'utf8');
+  await sql.transaction(higherBidRepair.split(/\r?\n-- statement\r?\n/).filter(s=>s.trim()).map(s=>sql.query(s)));
+  equal((await auction(90)).accepts_at,legacyDeadline);
+  equal((await sql`select count(*)::int n from audit_log where action='fa_player_deadline_shortened'`)[0].n,1);
   await sql`delete from fa_player_auctions where player_id in (90,91)`;
   await sql`delete from free_agent_offers where player_id in (90,91)`;
   await sql`delete from players where id in (90,91)`;
   await sql`delete from teams where id=90`;
   // New migrations must also be repeat-safe.
-  for (const file of migrations.filter(s=>/^00[789]-/.test(s))) {
+  for (const file of migrations.filter(s=>/^(00[789]|01[01])-/.test(s))) {
     const source=readFileSync(new URL('../db/migrations/'+file,import.meta.url),'utf8');
     await sql.transaction(source.split(/\r?\n-- statement\r?\n/).filter(s=>s.trim()).map(s=>sql.query(s)));
   }
   await sql`insert into teams(id,name,sleeper_user_id) values(1,'Alpha','a'),(2,'Beta','b'),(3,'Over Cap','c')`;
   await sql`insert into players(id,name,team_id,nba_experience,fair_value) values
     (1,'Premium FA',null,5,20),(2,'Underbid FA',null,5,20),(3,'Other FA',null,5,8),(4,'Unknown FA',null,5,null),
+    (5,'Higher Rebid FA',null,5,20),(6,'Late Rebid FA',null,5,20),(7,'Concurrent Rebid FA',null,5,20),(8,'Late Self Rebid FA',null,5,20),
     (10,'Extended Player',1,5,20),(11,'Rookie',1,0,20),(12,'Unknown Experience',1,null,20),
     (13,'Over Cap Player',3,5,20),(14,'Concurrent Extension',1,5,20),(15,'Trade Player',1,5,20),(16,'Trade Return',2,5,20),
     (17,'Unmatched RFA',1,5,20)`;
@@ -111,14 +116,59 @@ try {
   equal(second.first_bid_at,first.first_bid_at);
   equal(Number(second.fair_value),20000000);
   const settled=await Promise.all([action(bid(1,52000000),1),action(bid(1,54000000),2)]);
-  equal(Date.parse((await auction(1)).accepts_at)-Date.parse(second.accepts_at),24*3600000);
+  const bidOrder=await sql`select team_id,lag(team_id) over(order by created_at,id) as previous_team from free_agent_offers where round_id=1 and player_id=1 order by created_at,id`;
+  equal(Date.parse((await auction(1)).accepts_at)-firstDeadline,bidOrder.filter(o=>o.previous_team!=null&&o.previous_team!==o.team_id).length*12*3600000);
   const losing=(await action(bid(2,5000000),2)).offer;
   const under=await auction(2);
   assert(Math.abs((Date.parse(under.accepts_at)-Date.parse(under.first_bid_at))/86400000-30)<.00001);checks++;
   await action({action:'clear',roundId:1,playerId:2});
   equal((await auction(2)).accepts_at,under.accepts_at);
   const winning=(await action(bid(2,30000000),1)).offer;
-  equal(Date.parse((await auction(2)).accepts_at)-Date.parse(under.accepts_at),12*3600000);
+  const shortened=await auction(2);
+  assert(Math.abs((Date.parse(shortened.accepts_at)-Date.parse(under.first_bid_at))/86400000-(rules.acceptanceDays(30000000,20000000)+0.5))<.00001);checks++;
+  equal(shortened.first_bid_at,under.first_bid_at);
+  assert(Date.parse(shortened.accepts_at)<Date.parse(under.accepts_at));checks++;
+  // A higher bidder changes the base duration; lower rebids only add twelve hours.
+  await action(bid(5,5000000),1);
+  const originalClock=await auction(5);
+  await action(bid(5,16000000),2);
+  const improvedClock=await auction(5);
+  assert(Math.abs((Date.parse(improvedClock.accepts_at)-Date.parse(originalClock.first_bid_at))/86400000-14.5)<.00001);checks++;
+  equal(improvedClock.first_bid_at,originalClock.first_bid_at);
+  await action(bid(5,18000000),2);
+  const selfImproved=await auction(5);
+  assert(Math.abs((Date.parse(selfImproved.accepts_at)-Date.parse(originalClock.first_bid_at))/86400000-(rules.acceptanceDays(18000000,20000000)+0.5))<.00001);checks++;
+  await action(bid(5,18000000),2);
+  equal((await auction(5)).accepts_at,selfImproved.accepts_at);
+  await action(bid(5,10000000),1);
+  equal(Date.parse((await auction(5)).accepts_at)-Date.parse(selfImproved.accepts_at),12*3600000);
+  assert(Math.abs(Number((await auction(5)).acceptance_days)-rules.acceptanceDays(18000000,20000000))<1e-8);checks++;
+  await action({action:'clear',roundId:1,playerId:5});
+  await action(bid(5,40000000),2);
+  assert(Math.abs((Date.parse((await auction(5)).accepts_at)-Date.parse(originalClock.first_bid_at))/86400000-4.5)<.00001);checks++;
+  // Late premium bids leave twelve hours to respond, never restart a three-day clock.
+  await action(bid(6,5000000),1);
+  await sql`update fa_player_auctions set first_bid_at=clock_timestamp()-interval '10 days',accepts_at=clock_timestamp()+interval '20 days' where player_id=6`;
+  const lateStart=(await auction(6)).first_bid_at;
+  await action(bid(6,40000000),2);
+  const late=await auction(6);
+  const lateSeconds=Number((await sql`select extract(epoch from accepts_at-clock_timestamp()) seconds from fa_player_auctions where player_id=6`)[0].seconds);
+  assert(lateSeconds<=43200&&lateSeconds>43190);checks++;
+  equal(late.first_bid_at,lateStart);
+  await action(bid(8,5000000),1);
+  await sql`update fa_player_auctions set first_bid_at=clock_timestamp()-interval '10 days',accepts_at=clock_timestamp()+interval '20 days' where player_id=8`;
+  await action(bid(8,40000000),1);
+  const selfLateSeconds=Number((await sql`select extract(epoch from accepts_at-clock_timestamp()) seconds from fa_player_auctions where player_id=8`)[0].seconds);
+  assert(selfLateSeconds<=0&&selfLateSeconds>-10);checks++;
+  // Concurrent bids from the same manager add time only once on changing managers.
+  await action(bid(7,5000000),1);
+  const concurrentStart=(await auction(7)).first_bid_at;
+  await Promise.all([action(bid(7,16000000),2),action(bid(7,40000000),2)]);
+  const rebidClock=await auction(7);
+  equal(Number(rebidClock.acceptance_days),3);
+  assert(Math.abs((Date.parse(rebidClock.accepts_at)-Date.parse(concurrentStart))/86400000-3.5)<.00001);checks++;
+  await sql`update fa_player_auctions set accepts_at=clock_timestamp()-interval '1 second' where player_id in (5,6,7,8)`;
+  for (const playerId of [5,6,7,8]) await action({action:'dismiss',roundId:1,playerId,note:'Fixture dismissal'});
   await reject(()=>action({action:'award',roundId:1,playerId:2,offerId:winning.id}),/Wait/);
   await sql`update fa_player_auctions set accepts_at=clock_timestamp()-interval '1 second' where player_id in (1,2)`;
   await reject(()=>action(bid(1,60000000),1),/closed/);

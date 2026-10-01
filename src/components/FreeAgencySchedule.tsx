@@ -45,7 +45,7 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
       </div>
       {round.closes_at && <CountdownClock deadline={round.closes_at} now={now} label="Time until the free-agency deadline" />}
     </div>
-    <p className="text-sm text-text-muted">Higher Bid Values shorten the time the player will spend before accepting them. New bids add 12 hours to countdown.</p>
+    <p className="text-sm text-text-muted">Higher Bid Values shorten the time the player will spend before accepting them. Bids from a different manager add 12 hours to countdown.</p>
     {error && <p role="alert" className="text-sm text-cap-over">{error}</p>}
     {canManage && <DeadlineForm key={round.id + ":" + round.closes_at} deadline={round.closes_at}
       disabled={busy != null} submit={closesAt => act("deadline", {action:"deadline", closesAt})} />}
