@@ -146,6 +146,11 @@ export function isPick(player: { id: number }): boolean {
   return isPickId(player.id);
 }
 
+/** The team a pick originally belongs to, from its label "2028 1st (Team)". */
+export function pickOriginalTeam(player: { name: string }): string {
+  return player.name.match(/\((.+)\)$/)?.[1] ?? "";
+}
+
 export function decodePickId(id: number): { season: number; round: number; originalTeamId: number } {
   const n = -id;
   return { season: Math.floor(n / 1000), round: Math.floor((n % 1000) / 100), originalTeamId: n % 100 };

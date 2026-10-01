@@ -1,6 +1,6 @@
 "use client";
 
-import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap, isPick, getCurrentSalary } from "@/lib/types";
+import { Player, formatSalary, getTeamTotalCap, getCapStatus, isDeadCap, isPick, pickOriginalTeam, getCurrentSalary } from "@/lib/types";
 
 /** Salary column: picks carry no salary until drafted. */
 const salaryText = (p: Player) => (isPick(p) ? "pick" : formatSalary(getCurrentSalary(p)));
@@ -22,12 +22,14 @@ interface TeamTradeColumnProps {
   onRetainedChange: (amount: number) => void;
   onRemove: () => void;
   canRemove: boolean;
+  /** Power rating (1-100) by team name, shown next to each pick's original team. */
+  power?: Record<string, number>;
 }
 
 export default function TeamTradeColumn({
   teamName, allTeams, teamPlayers, playersOut, playersIn, otherTeamsInTrade,
   destinationMap, retainedSalary, incomingRetained, onTeamChange, onAddPlayerOut, onRemovePlayerOut, onSetDestination,
-  onRetainedChange, onRemove, canRemove,
+  onRetainedChange, onRemove, canRemove, power = {},
 }: TeamTradeColumnProps) {
   const currentCap = getTeamTotalCap(teamPlayers);
   const capStatus = getCapStatus(currentCap);
@@ -188,7 +190,9 @@ export default function TeamTradeColumn({
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-surface-light transition-colors text-left"
                     >
                       <span>{p.name}</span>
-                      <span className="text-text-dim font-mono text-xs">pick</span>
+                      <span className="text-text-dim font-mono text-xs" title="Original team's power rating (1-100). Lower = earlier pick.">
+                        PWR {power[pickOriginalTeam(p)] ?? "–"}
+                      </span>
                     </button>
                   ))}
                 </div>

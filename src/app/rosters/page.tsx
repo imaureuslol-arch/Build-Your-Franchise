@@ -19,6 +19,7 @@ import {
   getPlayerSalary,
   getSoftCap,
   getHardCap,
+  pickOriginalTeam,
 } from "@/lib/types";
 
 export default function RostersPage() {
@@ -29,10 +30,14 @@ export default function RostersPage() {
 
   // Draft picks each team owns, shown on its card back.
   const [picks, setPicks] = useState<Player[]>([]);
+  const [power, setPower] = useState<Record<string, number>>({});
   useEffect(() => {
     fetch("/api/picks")
-      .then((r) => (r.ok ? r.json() : { picks: [] }))
-      .then((d) => setPicks(d.picks))
+      .then((r) => (r.ok ? r.json() : { picks: [], power: {} }))
+      .then((d) => {
+        setPicks(d.picks);
+        setPower(d.power ?? {});
+      })
       .catch(() => {});
   }, []);
 
@@ -362,7 +367,13 @@ export default function RostersPage() {
 
             {/* Draft picks this team owns */}
             <div className="px-4 py-3 border-t border-border">
-              <h3 className="text-lg text-text mb-2">Draft Picks</h3>
+              <div className="flex items-baseline justify-between gap-2 mb-2">
+                <h3 className="text-lg text-text">Draft Picks</h3>
+                <span className="text-xs text-text-dim">
+                  PWR = original team&apos;s power rating, 1–100. Lower means an earlier pick.
+                  {power[openTeam.team] != null && <> This team: {power[openTeam.team]}.</>}
+                </span>
+              </div>
               {picks.filter((p) => p.team === openTeam.team).length === 0 ? (
                 <p className="text-sm text-text-dim">No picks in the next three drafts.</p>
               ) : (
@@ -372,6 +383,7 @@ export default function RostersPage() {
                     .map((p) => (
                       <li key={p.id} className="text-sm border border-border bg-surface-light px-2 py-1 rounded-sm">
                         {p.name}
+                        <span className="ml-2 text-xs font-mono text-text-dim">PWR {power[pickOriginalTeam(p)] ?? "–"}</span>
                       </li>
                     ))}
                 </ul>

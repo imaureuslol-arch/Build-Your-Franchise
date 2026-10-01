@@ -60,9 +60,13 @@ function TradesPage() {
 
   // Draft picks, as salary-free entries owned by their current team.
   const [picks, setPicks] = useState<Player[]>([]);
+  const [power, setPower] = useState<Record<string, number>>({});
   const loadPicks = useCallback(async () => {
     const res = await fetch("/api/picks");
-    if (res.ok) setPicks((await res.json()).picks);
+    if (!res.ok) return;
+    const data = await res.json();
+    setPicks(data.picks);
+    setPower(data.power ?? {});
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -404,6 +408,7 @@ function TradesPage() {
                 onRetainedChange={(amount) => updateSlot(i, { retainedSalary: amount })}
                 onRemove={() => removeTeam(i)}
                 canRemove={slots.length > 2}
+                power={power}
               />
             </div>
           );

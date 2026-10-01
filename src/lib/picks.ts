@@ -160,3 +160,29 @@ export async function loadPickPlayers(): Promise<Player[]> {
     avg_gp: null,
   }));
 }
+
+const ROTATION_SIZE = 10;
+
+/**
+ * Team power rating, 1-100: the summed fair value of each team's top
+ * ROTATION_SIZE players, scaled so the strongest team is 100 and the weakest
+ * is 1. Shown next to a pick for its original team: the lower the rating,
+ * the earlier that pick is likely to land.
+ */
+export async function teamPowerRatings(): Promise<Record<string, number>> {
+  const rows = await sql`
+    select t.name, coalesce(sum(r.fair_value), 0)::float8 as score
+    from teams t
+    left join lateral (
+      select p.fair_value from players p
+      where p.team_id = t.id and p.fair_value is not null
+      order by p.fair_value desc limit ${ROTATION_SIZE}
+    ) r on true
+    group by t.name`;
+  const scores = rows.map((r) => r.score as number);
+  const lo = Math.min(...scores);
+  const hi = Math.max(...scores);
+  return Object.fromEntries(
+    rows.map((r) => [r.name, hi > lo ? Math.round(1 + (99 * (r.score - lo)) / (hi - lo)) : 50])
+  );
+}

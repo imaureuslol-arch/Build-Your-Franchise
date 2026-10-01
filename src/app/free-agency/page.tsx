@@ -85,6 +85,15 @@ export default function FreeAgencyPage() {
   const [offerHistory, setOfferHistory] = useState<FAOffer[]>([]);
   const [offersLoading, setOffersLoading] = useState(true);
   const [viewingPlayerId, setViewingPlayerId] = useState<string | null>(null);
+  // Fair value ($M/season) per player: ranks the pool so a two-way guy with a
+  // hot 11-game stretch sits below a proven player coming off an injury.
+  const [values, setValues] = useState<Record<number, { fairValue: number }>>({});
+  useEffect(() => {
+    fetch("/api/player-values")
+      .then((r) => (r.ok ? r.json() : { values: {} }))
+      .then((d) => setValues(d.values ?? {}))
+      .catch(() => {});
+  }, []);
 
   const refreshOffers = useCallback(async () => {
     try {
@@ -132,8 +141,8 @@ export default function FreeAgencyPage() {
   const freeAgents = useMemo(
     () => players
       .filter((p) => p.team === FREE_AGENCY_TEAM && p.name !== "Dead Cap")
-      .sort((a, b) => (b.ppg ?? -1) - (a.ppg ?? -1)),
-    [players]
+      .sort((a, b) => (values[b.id]?.fairValue ?? -1) - (values[a.id]?.fairValue ?? -1) || (b.ppg ?? -1) - (a.ppg ?? -1)),
+    [players, values]
   );
 
   // The pool is every unrostered NBA player (~300), so only the best
@@ -299,7 +308,14 @@ export default function FreeAgencyPage() {
                       <div className="flex items-baseline gap-2 min-w-0">
                         <span className="font-medium text-sm truncate">{player.name}</span>
                         {player.ppg != null && (
-                          <span className="text-xs text-text-dim font-mono shrink-0">{player.ppg.toFixed(1)}</span>
+                          <span className="text-xs text-text-dim font-mono shrink-0" title="Fantasy points per game">
+                            {player.ppg.toFixed(1)}
+                          </span>
+                        )}
+                        {values[player.id] && (
+                          <span className="text-xs text-text-dim font-mono shrink-0" title="Fair value per season">
+                            · ${values[player.id].fairValue.toFixed(1)}M
+                          </span>
                         )}
                       </div>
                       {playerOffers && playerOffers[0] && (

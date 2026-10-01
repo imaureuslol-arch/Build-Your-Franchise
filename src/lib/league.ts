@@ -11,7 +11,8 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
   const [players, contracts, deadCap, teams] = await Promise.all([
     sql`select p.id, p.name, t.name as team, p.ppg, p.avg_gp
         from players p left join teams t on t.id = p.team_id
-        where p.team_id is not null or p.active`,
+        -- Free agents must be on an NBA team (Sleeper's team field).
+        where p.team_id is not null or (p.active and p.nba_team is not null)`,
     sql`select player_id, season, amount from contracts`,
     sql`select t.id as team_id, t.name as team, d.season, sum(d.amount)::bigint as amount
         from dead_cap d join teams t on t.id = d.team_id
