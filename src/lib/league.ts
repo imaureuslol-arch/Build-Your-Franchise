@@ -1,5 +1,6 @@
 import { sql } from "./db";
 import { DEAD_CAP_NAME, FREE_AGENCY_TEAM, getSalaryYears, type Player, type TeamOwner } from "./types";
+import { loadSleeperConferences } from "./sleeper-conferences";
 
 /**
  * Every player (rostered and free agents) with contracts flattened to
@@ -8,7 +9,7 @@ import { DEAD_CAP_NAME, FREE_AGENCY_TEAM, getSalaryYears, type Player, type Team
  * and validateTrade expect.
  */
 export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwner[] }> {
-  const [players, contracts, deadCap, teams] = await Promise.all([
+  const [players, contracts, deadCap, teams, conferences] = await Promise.all([
     sql`select p.id, p.name, t.name as team, p.ppg, p.avg_gp
         from players p left join teams t on t.id = p.team_id
         -- Free agents must be on an NBA team (Sleeper's team field).
@@ -17,7 +18,9 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
     sql`select t.id as team_id, t.name as team, d.season, sum(d.amount)::bigint as amount
         from dead_cap d join teams t on t.id = d.team_id
         group by t.id, t.name, d.season`,
-    sql`select name, owner_name, conference from teams order by name`,
+    sql`select name, owner_name, conference, sleeper_roster from teams order by name`,
+    // Page reads use Sleeper's split directly; stored assignments are an outage fallback.
+    loadSleeperConferences(process.env.SLEEPER_LEAGUE_ID ?? "").catch(() => new Map<number, string | null>()),
   ]);
 
   const years = getSalaryYears();
@@ -48,7 +51,7 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
   const owners: TeamOwner[] = teams.map((t) => ({
     team_name: t.name,
     user_name: t.owner_name ?? "(no owner)",
-    conference: t.conference,
+    conference: conferences.has(t.sleeper_roster) ? conferences.get(t.sleeper_roster)! : t.conference,
   }));
 
   const all = [...byId.values(), ...deadRows.values()].sort((a, b) => a.name.localeCompare(b.name));

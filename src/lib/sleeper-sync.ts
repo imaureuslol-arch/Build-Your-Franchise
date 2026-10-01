@@ -14,6 +14,7 @@
 
 import { sql } from "./db";
 import { applyPicks, pickDifferences, seedPicks, sleeperPicks, type MovedPick } from "./picks";
+import { conferencesFromSleeper } from "./sleeper-conferences";
 
 const API = "https://api.sleeper.app/v1";
 
@@ -29,13 +30,6 @@ interface SleeperRoster {
   settings?: { division?: number };
 }
 
-/** "Eastern Conference" -> "East"; any other division name is kept as is. */
-function conferenceName(division: string | undefined): string | null {
-  if (!division) return null;
-  if (/east/i.test(division)) return "East";
-  if (/west/i.test(division)) return "West";
-  return division;
-}
 interface SleeperPlayer {
   full_name?: string;
   first_name?: string;
@@ -65,6 +59,7 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
     get<Record<string, SleeperPlayer>>(`/players/nba`),
   ]);
   const userById = new Map(users.map((u) => [u.user_id, u]));
+  const conferences = conferencesFromSleeper(league, rosters);
 
   // Teams: owner changes flow through; an ownerless roster keeps its name.
   const teams = await sql`select id, sleeper_roster, name from teams`;
@@ -76,8 +71,7 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
     const u = r.owner_id ? userById.get(r.owner_id) : undefined;
     const name = u ? u.metadata?.team_name?.trim() || `Team ${u.display_name}` : team.name;
     // Conference = the roster's Sleeper division (league.metadata.division_N).
-    const division = r.settings?.division;
-    const conference = conferenceName(division ? league.metadata?.[`division_${division}`] : undefined);
+    const conference = conferences.get(r.roster_id) ?? null;
     const res = await sql`
       update teams set owner_name = ${u?.display_name ?? null},
                        sleeper_user_id = ${u?.user_id ?? null},
