@@ -4,7 +4,8 @@
  * reloading; the page only shows what the server answers.
  */
 
-import { formatSalary, getFairValueForYear, getVetMin } from "./types";
+import { getFairValueForYear, getVetMin } from "./types";
+import { dialogueLine, finalDemandLine, type ExtensionTier } from "./extension-dialogue";
 
 export const MAX_OFFERS = 3;
 export const YOUNG_MAX_SALARY = 60_000_000; // 23 and under
@@ -21,26 +22,27 @@ export interface Ask {
   perYear: Record<number, number>;
   /** Average of perYear: offers are judged against this. */
   average: number;
-  /** His value is above his age-tier max, so he demands exactly the max. */
+  /** Every offered season reaches his age-tier max, so he demands the max. */
   snapped: boolean;
   max: number;
 }
 
 /**
  * The player's asking price for the given seasons: fair value grown 5% a
- * season, never above his age-tier max and never below that season's vet
- * minimum.
+ * season, then increased by 30% or $5M, whichever is higher. Never above
+ * his age-tier max and never below that season's vet minimum.
  */
 export function askingPrice(fairValueMillions: number | null, age: number, years: number[]): Ask {
   const max = maxSalaryForAge(age);
   const fv = Math.max(0, fairValueMillions ?? 0);
-  const snapped = fv * 1_000_000 > max;
   const perYear: Record<number, number> = {};
   for (const y of years) {
-    const grown = getFairValueForYear(Math.min(fv, max / 1_000_000), y) * 1_000_000;
-    perYear[y] = Math.round(Math.min(max, Math.max(getVetMin(y), grown)));
+    const grown = getFairValueForYear(fv, y) * 1_000_000;
+    const wanted = Math.max(grown * 1.3, grown + 5_000_000);
+    perYear[y] = Math.round(Math.min(max, Math.max(getVetMin(y), wanted)));
   }
   const average = years.reduce((s, y) => s + perYear[y], 0) / Math.max(1, years.length);
+  const snapped = years.length > 0 && years.every((y) => perYear[y] === max);
   return { perYear, average, snapped, max };
 }
 
@@ -69,49 +71,28 @@ export function isInsulting(ratio: number): boolean {
 }
 
 /** The player's reply to an offer worth `ratio` of his ask. */
-export function respond(ratio: number, offersUsed: number, snapped: boolean): { accepted: boolean; reply: string } {
+export function respond(ratio: number, offersUsed: number, snapped: boolean, tier: ExtensionTier = snapped ? "max" : "star", seed = 0): { accepted: boolean; reply: string } {
   const remaining = Math.max(0, MAX_OFFERS - offersUsed);
   const left = remaining === 1 ? "This is your last chance." : `${remaining} offers remaining`;
 
   // Snapped players demand exactly the max; 0.999 absorbs rounding across seasons.
   const acceptAt = snapped ? 0.999 : 0.95;
-  if (!snapped && ratio >= 1.3) return { accepted: true, reply: "YOU SERIOUS?! Hell yeah! You got a deal!" };
+  if (!snapped && ratio >= 1.3) return { accepted: true, reply: dialogueLine(tier, "overpaid", seed) };
   if (ratio >= acceptAt) {
     return {
       accepted: true,
-      reply: snapped
-        ? "I appreciate you putting your faith in me. You're not gonna regret it."
-        : "Alright, that's a fair deal. Let's do it.",
+      reply: dialogueLine(tier, "accepted", seed),
     };
   }
-  if (snapped) {
-    return { accepted: false, reply: `You're not actually trying to negotiate right? Put down the max and let's get to work. (${left})` };
-  }
-  const bands: [number, string][] = [
-    [0.9, "This is pretty fair. Give me a small bump and you've got a deal."],
-    [0.85, "I love the city, but business is business. I’m gonna need a little more."],
-    [0.8, "This is a bit too low, but we're close."],
-    [0.7, "I like playing here but I'm gonna need more."],
-    [0.6, "This is a low-ball offer, I know what I'm worth."],
-    [0.5, "You're crazy man. Let me tell you, this is disrespectful."],
-    [0.45, "Try again with a real offer. Or don't, I'll go somewhere I'm respected."],
-    [0.4, "Is this a joke? I feel like I'm being pranked right now. Check the stats and try again."],
-  ];
-  const text =
-    bands.find(([min]) => ratio >= min)?.[1] ??
-    "Is this a joke? Man, stop wasting my time or I'll walk out of here RIGHT NOW.";
+  const kind = ratio >= 0.8 ? "close" : ratio >= INSULT_RATIO ? "low" : "insult";
+  const text = dialogueLine(tier, kind, seed);
   return { accepted: false, reply: `${text} (${left})` };
 }
 
 /** Flat per-season demand once the offers run out. */
-export function ultimatum(ask: Ask, bestRatio: number, lastWasInsulting: boolean, seasons: number) {
+export function ultimatum(ask: Ask, bestRatio: number, seasons: number, tier: ExtensionTier = ask.snapped ? "max" : "star", seed = 0) {
   const close = bestRatio >= 0.8;
   const amount = Math.round(Math.min(ask.average * (close ? 1.1 : 1.5), ask.max));
-  const label = seasons === 1 ? "year" : "years";
-  const reply = lastWasInsulting
-    ? `That offer is a slap in the face. You're wasting my time. My final demand is ${formatSalary(amount)} per year for ${seasons} ${label}. Take it or I'm hitting the market.`
-    : close
-      ? `Look, your last offer was close, and I'd like to stay here. Give me ${formatSalary(amount)} per year for ${seasons} ${label} and I'll sign right now.`
-      : `Alright. I'm done playing games. Pay me what I'm worth or I'm leaving. My final demand is ${formatSalary(amount)} per year for ${seasons} ${label}.`;
+  const reply = finalDemandLine(tier, amount, seasons, seed);
   return { amount, reply };
 }

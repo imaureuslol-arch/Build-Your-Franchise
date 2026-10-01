@@ -10,6 +10,8 @@ import {
   ultimatum,
 } from "@/lib/extensions";
 import { getExtensionYears, getSalaryYears, type Player } from "@/lib/types";
+import { extensionOpening } from "@/lib/extension-opening";
+import { dialogueLine, finalDemandLine } from "@/lib/extension-dialogue";
 
 /**
  * Extension negotiations, run entirely on the server.
@@ -30,15 +32,19 @@ type Loaded =
       years: number[];
       age: number;
       fairValue: number;
+      ownerKey: string;
+      stats: { fairValue: number; age: number; ppg: number; avgGamesPlayed: number | null };
       state: { offers_used: number; best_ratio: number; last_average: number; demand: number | null; demand_years: number[] | null } | null;
     };
 
 async function load(viewer: Viewer, playerId: number): Promise<Loaded> {
   if (viewer.teamId == null) return { error: "Log in with your team link to negotiate.", status: 403 };
   const [row] = await sql`
-    select id, name, team_id, ppg, avg_gp, fair_value,
-           date_part('year', age(birthdate))::int as age
-    from players where id = ${playerId}`;
+    select p.id, p.name, p.team_id, p.ppg, p.avg_gp, p.proj_fppg, p.fair_value,
+           coalesce(p.gp_override, p.avg_gp) as gp,
+           date_part('year', age(p.birthdate))::int as age,
+           t.sleeper_user_id as owner_id
+    from players p left join teams t on t.id = p.team_id where p.id = ${playerId}`;
   if (!row || row.team_id !== viewer.teamId) return { error: "That player isn't on your team.", status: 403 };
 
   const [done] = await sql`select 1 from extensions where player_id = ${playerId}`;
@@ -67,17 +73,35 @@ async function load(viewer: Viewer, playerId: number): Promise<Loaded> {
     years,
     age,
     fairValue: row.fair_value,
+    ownerKey: row.owner_id != null ? `sleeper:${row.owner_id}` : `team:${viewer.teamId}`,
+    stats: {
+      fairValue: row.fair_value,
+      age,
+      ppg: Math.round((row.ppg ?? row.proj_fppg ?? 0) * 10) / 10,
+      avgGamesPlayed: row.gp != null ? Math.round(row.gp) : null,
+    },
     state: (state as Extract<Loaded, { player: Player }>["state"]) ?? null,
   };
 }
 
 function view(l: Extract<Loaded, { player: Player }>) {
+  const { seed, ...opening } = openingFor(l);
   return {
+    opening,
+    stats: l.stats,
     years: l.years,
     offersUsed: l.state?.offers_used ?? 0,
     lastAverage: l.state?.last_average ?? 0,
-    demand: l.state?.demand != null ? { amount: l.state.demand, years: l.state.demand_years } : null,
+    demand: l.state?.demand != null ? {
+      amount: l.state.demand,
+      years: l.state.demand_years,
+      reply: finalDemandLine(opening.tier, l.state.demand, l.state.demand_years?.length ?? 1, seed + l.state.offers_used),
+    } : null,
   };
+}
+
+function openingFor(l: Extract<Loaded, { player: Player }>) {
+  return extensionOpening(l.ownerKey, l.player.id, getSalaryYears()[0], l.fairValue, l.age, l.years);
 }
 
 export async function GET(request: NextRequest) {
@@ -85,7 +109,7 @@ export async function GET(request: NextRequest) {
   if (!viewer) return notLoggedIn();
   const l = await load(viewer, Number(request.nextUrl.searchParams.get("player_id")));
   if ("error" in l) return Response.json({ error: l.error }, { status: l.status });
-  return Response.json(view(l));
+  return Response.json(view(l), { headers: { "Cache-Control": "private, no-store" } });
 }
 
 async function sign(viewer: Viewer, playerId: number, years: number[], amounts: Record<number, number>, accepted: boolean) {
@@ -113,6 +137,7 @@ export async function POST(request: NextRequest) {
   if ("error" in l) return Response.json({ error: l.error }, { status: l.status });
   const playerId = l.player.id;
   const used = l.state?.offers_used ?? 0;
+  const { tier, seed } = openingFor(l);
 
   // Answering the final demand.
   if (body.action === "accept" || body.action === "decline") {
@@ -126,9 +151,7 @@ export async function POST(request: NextRequest) {
     return Response.json({
       done: true,
       accepted: body.action === "accept",
-      reply: body.action === "accept"
-        ? "Smart move. I'll see you at training camp."
-        : "This is the kinda mistake that gets you fired. Don't call me again.",
+      reply: dialogueLine(tier, body.action === "accept" ? "accepted" : "declined", seed + used),
       final: { years, amounts },
     });
   }
@@ -153,7 +176,7 @@ export async function POST(request: NextRequest) {
   const insulting = isInsulting(ratio);
   const nowUsed = used + (insulting ? 2 : 1);
   const bestRatio = Math.max(l.state?.best_ratio ?? 0, ratio);
-  const answer = respond(ratio, nowUsed, ask.snapped);
+  const answer = respond(ratio, nowUsed, ask.snapped, tier, seed + nowUsed);
 
   if (answer.accepted) {
     await sign(viewer, playerId, years, amounts, true);
@@ -164,7 +187,7 @@ export async function POST(request: NextRequest) {
   let demand: { amount: number; years: number[] } | null = null;
   let reply = answer.reply;
   if (nowUsed >= MAX_OFFERS) {
-    const u = ultimatum(ask, bestRatio, insulting, years.length);
+    const u = ultimatum(ask, bestRatio, years.length, tier, seed + nowUsed);
     demand = { amount: u.amount, years };
     reply = u.reply;
   }

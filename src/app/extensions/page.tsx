@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
 import {
@@ -12,26 +12,14 @@ import {
   getExtensionYears,
   formatSalary,
 } from "@/lib/types";
-import { MAX_OFFERS, MAX_SALARY, YOUNG_MAX_SALARY, maxSalaryForAge } from "@/lib/extensions";
+import { MAX_OFFERS, MAX_SALARY, YOUNG_MAX_SALARY } from "@/lib/extensions";
 
 interface PlayerStats {
   fairValue: number; // millions
   age: number;
   ppg: number;
-  avgGamesPlayed: number;
+  avgGamesPlayed: number | null;
 }
-
-const OPENING_LINES = [
-  "Alright, let's talk.",
-  "My agent said you'd be calling. What's the number?",
-  "Aight I'm listening. Don't lowball me.",
-  "Been waiting on this. Let's hear it.",
-  "Look, I like it here. But this is business. what's the offer?",
-  "Let's get this done. I got shootaround in an hour.",
-  "Straight up, just give me the number. I don't want to hear nothing else.",
-  "Sup boss. I think I proved my worth this season. So I'm expecting a bag.",
-  "Listen, I did everything coach asked. Played for the team. Now I need the team to do what's best for me."
-];
 
 interface ExtensionRecord {
   id: string;
@@ -93,6 +81,9 @@ export default function ExtensionsPage() {
   const [isFinalDemand, setIsFinalDemand] = useState(false);
   const [finalDemandAmount, setFinalDemandAmount] = useState<number>(0);
   const [submitting, setSubmitting] = useState(false);
+  const negotiationRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => negotiationRequest.current?.abort(), []);
 
   const eligiblePlayers = allPlayers.filter(
     (p) =>
@@ -107,16 +98,16 @@ export default function ExtensionsPage() {
     : eligiblePlayers;
 
   async function startNegotiation(player: Player) {
+    if (submitting) return;
+    negotiationRequest.current?.abort();
+    const request = new AbortController();
+    negotiationRequest.current = request;
     setSelectedPlayer(player);
     setPlayerStats(null);
     setStatsError(null);
     setStatsLoading(true);
-    setChat([
-      {
-        role: "player",
-        content: OPENING_LINES[Math.floor(Math.random() * OPENING_LINES.length)],
-      },
-    ]);
+    setChat([]);
+    setShowCopyPopup(false);
     setOffersUsed(0);
     setNegotiationDone(false);
     setAgreementReached(false);
@@ -128,57 +119,34 @@ export default function ExtensionsPage() {
       Object.fromEntries(getExtensionYears(player).map((y) => [y, 10_000_000]))
     );
 
-    // Pick up where this negotiation left off: offers used and any final
-    // demand live on the server.
-    fetch(`/api/extensions/negotiate?player_id=${player.id}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((state) => {
-        if (!state) return;
-        setOffersUsed(state.offersUsed ?? 0);
-        if (state.offersUsed > 0) {
-          setChat((prev) => [...prev, {
-            role: "player",
-            content: `We already talked. You've used ${state.offersUsed} of ${MAX_OFFERS} offers.`,
-          }]);
-        }
-        if (state.demand) {
-          setSelectedYears(state.demand.years);
-          setFinalDemandAmount(state.demand.amount);
-          setIsFinalDemand(true);
-          setChat((prev) => [...prev, {
-            role: "player",
-            content: `My final demand stands: ${formatSalary(state.demand.amount)} per year for ${state.demand.years.length} ${state.demand.years.length === 1 ? "year" : "years"}.`,
-          }]);
-        }
-      })
-      .catch(() => {});
-
     try {
-      const res = await fetch(
-        `/api/player-stats?name=${encodeURIComponent(player.name)}`
-      );
-      const data = await res.json();
-      if (res.ok) {
-        const stats = data as PlayerStats;
-        setPlayerStats(stats);
-        if (stats.fairValue * 1_000_000 > maxSalaryForAge(stats.age)) {
-          // Swap only the opening line; anything restored after it stays.
-          setChat((prev) => [
-            {
-              role: "player",
-              content:
-                "I know what I'm worth, you know what I'm worth. Just put down the max and let's get to work.",
-            },
-            ...prev.slice(1),
-          ]);
-        }
-      } else {
-        setStatsError(data.error ?? "Stats unavailable — contact the commissioner.");
+      const res = await fetch(`/api/extensions/negotiate?player_id=${player.id}`, {
+        signal: request.signal,
+        cache: "no-store",
+      });
+      const state = await res.json();
+      if (request.signal.aborted) return;
+      if (!res.ok) {
+        setStatsError(state.error ?? "Couldn't load this negotiation. Try again.");
+        return;
       }
+      setPlayerStats(state.stats);
+      setOffersUsed(state.offersUsed ?? 0);
+      const messages: ChatMessage[] = [{ role: "player", content: state.opening.text }];
+      if (state.offersUsed > 0) {
+        messages.push({ role: "player", content: `Offers used: ${state.offersUsed}/${MAX_OFFERS}.` });
+      }
+      if (state.demand) {
+        setSelectedYears(state.demand.years);
+        setFinalDemandAmount(state.demand.amount);
+        setIsFinalDemand(true);
+        messages.push({ role: "player", content: state.demand.reply });
+      }
+      setChat(messages);
     } catch {
-      setStatsError("Failed to fetch player stats — contact the commissioner.");
+      if (!request.signal.aborted) setStatsError("Couldn't load this negotiation. Try again.");
     } finally {
-      setStatsLoading(false);
+      if (!request.signal.aborted) setStatsLoading(false);
     }
   }
 
@@ -329,7 +297,8 @@ export default function ExtensionsPage() {
             <div className="max-h-[600px] overflow-y-auto">
               {filteredPlayers.map((player) => (
                 <button
-                  key={player.name}
+                  key={player.id}
+                  disabled={submitting}
                   onClick={() => startNegotiation(player)}
                   className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-surface-light transition-colors ${
                     selectedPlayer?.name === player.name
@@ -362,11 +331,11 @@ export default function ExtensionsPage() {
                     <p className="text-xs text-cap-over mt-0.5">{statsError}</p>
                   ) : playerStats ? (
                     <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5 text-xs text-text-muted">
-                      <span>{playerStats.ppg} PPG</span>
+                      <span>{playerStats.ppg} FPPG</span>
                       <span className="text-text-dim">|</span>
                       <span>Age {playerStats.age}</span>
                       <span className="text-text-dim">|</span>
-                      <span>{playerStats.avgGamesPlayed} GP/season</span>
+                      <span>{playerStats.avgGamesPlayed ?? "—"} GP/season</span>
                     </div>
                   ) : null}
                 </div>
@@ -405,12 +374,14 @@ export default function ExtensionsPage() {
                   </p>
                   <div className="flex gap-3">
                     <button
+                      disabled={submitting}
                       onClick={() => handleFinalDecision(true)}
                       className="flex-1 py-3 bg-cap-under text-white rounded-sm font-bold hover:opacity-90 transition-opacity"
                     >
                       ACCEPT ({formatSalary(finalDemandAmount)}/yr)
                     </button>
                     <button
+                      disabled={submitting}
                       onClick={() => handleFinalDecision(false)}
                       className="flex-1 py-3 bg-cap-over text-white rounded-sm font-bold hover:opacity-90 transition-opacity"
                     >
