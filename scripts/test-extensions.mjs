@@ -70,16 +70,21 @@ await test("20% reveal probability, with varied greetings and independent owner 
   assert(greetings.size >= 6);
   console.log(`  ${reveals}/10000 owner accounts received an asking-price reveal`);
 });
-await test("offer acceptance, max demands, insults and final-demand caps still work", () => {
+await test("95% fair-value acceptance applies to every tier, with salary bounds", () => {
   assert(!extensions.respond(.94, 1, false, "minimum").accepted);
   assert(extensions.respond(.95, 1, false, "minimum").accepted);
-  assert(!extensions.respond(.98, 1, true, "max").accepted);
+  assert(!extensions.respond(.949999, 1, true, "max").accepted);
+  assert(extensions.respond(.95, 1, true, "max").accepted);
   assert(extensions.respond(1, 1, true, "max").accepted);
   assert(extensions.isInsulting(.39));
   assert(!extensions.isInsulting(.4));
   const ask = extensions.askingPrice(100, 23, years);
   assert.equal(extensions.ultimatum(ask, .5, years.length, "max").amount, 60_000_000);
   assert(!dialogue.dialogueLine("minimum", "declined", 0).includes("replacing me"));
+  assert.equal(extensions.fairValuePrice(20, 30, [season]).average, 20_000_000);
+  assert.equal(extensions.fairValuePrice(100, 23, [season]).average, 60_000_000);
+  assert.equal(extensions.fairValuePrice(100, 24, [season]).average, 80_000_000);
+  assert.equal(extensions.fairValuePrice(0, 30, [season]).average, types.getVetMin(season));
 });
 
 // Exercise the real route with in-memory auth/SQL. Never connect to a database.
@@ -87,16 +92,19 @@ let viewer = { sessionId: "device-one", teamId: 7, teamName: "Team", role: null 
 let playerTeam = 7;
 let playerId = 12;
 let storedState = null;
-const fakeSql = async (parts) => {
+const signedContracts = [];
+const fakeSql = async (parts, ...values) => {
   const query = parts.join("?");
   if (query.includes("from players p")) return [{ id: playerId, name: "Player", team_id: playerTeam, ppg: 15, avg_gp: 65, proj_fppg: 17, fair_value: 20, age: 30, gp: 65, owner_id: "owner" }];
   if (query.includes("select 1 from extensions")) return [];
   if (query.includes("from contracts")) return [{ season, amount: 10_000_000 }];
   if (query.includes("from extension_negotiations")) return storedState ? [storedState] : [];
   if (query.includes("insert into extension_negotiations")) return [{ player_id: playerId }];
+  if (query.includes("insert into contracts")) { signedContracts.push({ year: values[1], amount: values[2] }); return []; }
+  if (query.includes("insert into extensions") || query.includes("delete from extension_negotiations")) return [];
   throw new Error(`Unexpected SQL: ${query}`);
 };
-fakeSql.transaction = async () => { throw new Error("Unexpected signing transaction"); };
+fakeSql.transaction = async (queries) => Promise.all(queries);
 const route = load("src/app/api/extensions/negotiate/route.ts", {
   "@/lib/db": { sql: fakeSql },
   "@/lib/auth": { getViewer: async () => viewer, notLoggedIn: () => Response.json({ error: "login" }, { status: 401 }), audit: async () => {} },
@@ -131,12 +139,24 @@ await test("an unauthenticated or different owner cannot load a negotiation", as
   assert.equal((await get()).status, 403);
   playerTeam = 7;
 });
-await test("POST judges an offer against the raised ask rather than the old fair value", async () => {
-  const response = await route.POST({ json: async () => ({ player_id: playerId, action: "offer", years: years.slice(0, 1), amounts: { [years[0]]: 21_000_000 } }) });
-  const result = await response.json();
-  assert.equal(response.status, 200);
-  assert.equal(result.accepted, false);
-  assert.equal(result.offersUsed, 1);
-  assert.equal(result.demand, null);
+await test("POST accepts exactly 95% of fair value despite the higher opening ask", async () => {
+  const year = years[0];
+  const fairValue = extensions.fairValuePrice(20, 30, [year]).average;
+  const floor = Math.ceil(fairValue * .95);
+  const offer = (amount) => route.POST({ json: async () => ({ player_id: playerId, action: "offer", years: [year], amounts: { [year]: amount } }) });
+  assert(floor < extensions.askingPrice(20, 30, [year]).average * .95);
+  const tooLow = await offer(floor - 1);
+  assert.equal(tooLow.status, 200);
+  assert.equal((await tooLow.json()).accepted, false);
+  assert.equal(signedContracts.length, 0);
+  for (const amount of [floor, fairValue]) {
+    const response = await offer(amount);
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(result.accepted, true);
+    assert.equal(result.done, true);
+    assert.equal(result.final.amounts[year], amount);
+  }
+  assert.deepEqual(signedContracts, [{ year, amount: floor }, { year, amount: fairValue }]);
 });
 console.log(`${count} extension checks passed; no database writes.`);

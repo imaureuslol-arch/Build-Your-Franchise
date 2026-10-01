@@ -3,7 +3,7 @@ import { sql } from "@/lib/db";
 import { audit, getViewer, notLoggedIn, type Viewer } from "@/lib/auth";
 import {
   MAX_OFFERS,
-  askingPrice,
+  fairValuePrice,
   isInsulting,
   offerProblem,
   respond,
@@ -171,12 +171,12 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "You can't lower your offer." }, { status: 400 });
   }
 
-  const ask = askingPrice(l.fairValue, l.age, years);
-  const ratio = average / ask.average;
+  const fairValue = fairValuePrice(l.fairValue, l.age, years);
+  const ratio = average / fairValue.average;
   const insulting = isInsulting(ratio);
   const nowUsed = used + (insulting ? 2 : 1);
   const bestRatio = Math.max(l.state?.best_ratio ?? 0, ratio);
-  const answer = respond(ratio, nowUsed, ask.snapped, tier, seed + nowUsed);
+  const answer = respond(ratio, nowUsed, fairValue.snapped, tier, seed + nowUsed);
 
   if (answer.accepted) {
     await sign(viewer, playerId, years, amounts, true);
@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
   let demand: { amount: number; years: number[] } | null = null;
   let reply = answer.reply;
   if (nowUsed >= MAX_OFFERS) {
-    const u = ultimatum(ask, bestRatio, years.length, tier, seed + nowUsed);
+    const u = ultimatum(fairValue, bestRatio, years.length, tier, seed + nowUsed);
     demand = { amount: u.amount, years };
     reply = u.reply;
   }

@@ -20,11 +20,24 @@ export function maxSalaryForAge(age: number): number {
 export interface Ask {
   /** What the player wants each season, in dollars. */
   perYear: Record<number, number>;
-  /** Average of perYear: offers are judged against this. */
+  /** Average of perYear. */
   average: number;
-  /** Every offered season reaches his age-tier max, so he demands the max. */
+  /** Every offered season reaches his age-tier max. */
   snapped: boolean;
   max: number;
+}
+
+/** Negotiation target: seasonal fair value, with the league's salary bounds. */
+export function fairValuePrice(fairValueMillions: number | null, age: number, years: number[]): Ask {
+  const max = maxSalaryForAge(age);
+  const fv = Math.max(0, fairValueMillions ?? 0);
+  const perYear: Record<number, number> = {};
+  for (const y of years) {
+    const grown = getFairValueForYear(fv, y) * 1_000_000;
+    perYear[y] = Math.round(Math.min(max, Math.max(getVetMin(y), grown)));
+  }
+  const average = years.reduce((s, y) => s + perYear[y], 0) / Math.max(1, years.length);
+  return { perYear, average, max, snapped: years.length > 0 && years.every((y) => perYear[y] === max) };
 }
 
 /**
@@ -70,13 +83,12 @@ export function isInsulting(ratio: number): boolean {
   return ratio < INSULT_RATIO;
 }
 
-/** The player's reply to an offer worth `ratio` of his ask. */
+/** The player's reply to an offer worth `ratio` of his seasonal fair value. */
 export function respond(ratio: number, offersUsed: number, snapped: boolean, tier: ExtensionTier = snapped ? "max" : "star", seed = 0): { accepted: boolean; reply: string } {
   const remaining = Math.max(0, MAX_OFFERS - offersUsed);
   const left = remaining === 1 ? "This is your last chance." : `${remaining} offers remaining`;
 
-  // Snapped players demand exactly the max; 0.999 absorbs rounding across seasons.
-  const acceptAt = snapped ? 0.999 : 0.95;
+  const acceptAt = 0.95;
   if (!snapped && ratio >= 1.3) return { accepted: true, reply: dialogueLine(tier, "overpaid", seed) };
   if (ratio >= acceptAt) {
     return {
