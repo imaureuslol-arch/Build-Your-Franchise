@@ -1,524 +1,185 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Select from "@/components/Select";
 import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
-import {
-  Player,
-  FREE_AGENCY_TEAM,
-  DEAD_CAP_NAME,
-  isDeadCap,
-  getTeamTotalCap,
-  getCapStatus,
-  formatSalary,
-  getCurrentSalary,
-} from "@/lib/types";
+import { Player, FREE_AGENCY_TEAM, formatSalary, getCurrentSalary, isDeadCap, isPick } from "@/lib/types";
+import { findTrades, FinderFilters, PlayerRule, ScoutInfo, SearchProgress, TradeMatch } from "@/lib/trade-finder";
+import "./finder.css";
 
-interface PlayerValue {
-  fairValue: number; // millions
-  age: number;
-}
-
-interface PackageResult {
-  team: string;
-  players: (Player & { fairValue: number; age: number })[];
-  totalSalary: number;
-  totalFairValue: number;
-  fairValueDiff: number; // absolute diff from user's package
-}
+interface PickInfo { fairValue: number; salary: number; slot: number }
+const defaults: FinderFilters = { playersMin: 1, playersMax: 2, picksMin: 0, picksMax: 0, pickRound: "any", salaryMax: 80000000, valueTolerance: .25, rules: [], sort: "value" };
+const options = (values: number[], suffix = "") => values.map((n) => ({ value: String(n), label: `${n}${suffix}` }));
+const positions = ["PG", "SG", "SF", "PF", "C"];
 
 export default function TradeFinderPage() {
-  const { players: allPlayers, loading: pLoading } = usePlayers();
-  const { teamName, owner, isLoading: teamLoading } = useUserTeam();
+  const { players, loading } = usePlayers();
+  const { teamName, isLoading: identityLoading } = useUserTeam();
   const router = useRouter();
-  const loading = pLoading || teamLoading;
-
-  // Fair values from bulk endpoint
-  const [playerValues, setPlayerValues] = useState<Record<number, PlayerValue>>({});
-  const [valuesLoading, setValuesLoading] = useState(true);
+  const [chosenTeam, setChosenTeam] = useState("");
+  const team = chosenTeam || teamName || "";
+  const [info, setInfo] = useState<Record<number, ScoutInfo>>({});
+  const [picks, setPicks] = useState<Player[]>([]);
+  const [pickInfo, setPickInfo] = useState<Record<number, PickInfo>>({});
+  const [positionsAvailable, setPositionsAvailable] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [offerIds, setOfferIds] = useState<number[]>([]);
+  const [tab, setTab] = useState("players");
+  const [rosterSearch, setRosterSearch] = useState("");
+  const [filters, setFilters] = useState<FinderFilters>(defaults);
+  const [preset, setPreset] = useState("custom");
+  const [results, setResults] = useState<TradeMatch[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [progress, setProgress] = useState<SearchProgress | null>(null);
+  const searchAbort = useRef<AbortController | null>(null);
+  const nextRule = useRef(1);
 
   useEffect(() => {
-    async function fetchValues() {
+    const controller = new AbortController();
+    async function load() {
+      setDataLoading(true); setError("");
       try {
-        const res = await fetch("/api/player-values");
-        const data = await res.json();
-        if (res.ok) setPlayerValues(data.values ?? {});
-      } catch {
-        /* silent */
-      } finally {
-        setValuesLoading(false);
-      }
+        const responses = await Promise.all(["/api/trade-finder", "/api/picks"].map((url) => fetch(url, { signal: controller.signal })));
+        if (responses.some((r) => !r.ok)) throw new Error("Trade Finder data could not be loaded. Please retry.");
+        const [scouts, draft] = await Promise.all(responses.map((r) => r.json()));
+        if (controller.signal.aborted) return;
+        setInfo(scouts.players); setPositionsAvailable(scouts.positionsAvailable);
+        setPicks(draft.picks); setPickInfo(draft.values ?? {});
+      } catch (e) { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Could not load trade data."); }
+      finally { if (!controller.signal.aborted) setDataLoading(false); }
     }
-    fetchValues();
-  }, []);
+    void load(); return () => controller.abort();
+  }, [retry]);
+  useEffect(() => () => searchAbort.current?.abort(), []);
 
-  // User's selected players to trade away
-  const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([]);
-  const [rosterSearch, setRosterSearch] = useState("");
+  const teams = useMemo(() => [...new Set(players.filter((p) => p.team && p.team !== FREE_AGENCY_TEAM).map((p) => p.team))].sort(), [players]);
+  const roster = useMemo(() => [...players.filter((p) => p.team === team && !isDeadCap(p)), ...picks.filter((p) => p.team === team)], [players, picks, team]);
+  const offer = roster.filter((p) => offerIds.includes(p.id));
+  const valueOf = (p: Player) => isPick(p) ? pickInfo[p.id]?.fairValue : info[p.id]?.fairValue;
+  const offerValue = offer.reduce((n, p) => n + (valueOf(p) ?? 0), 0);
+  const offerSalary = offer.reduce((n, p) => n + (getCurrentSalary(p) ?? 0), 0);
+  const visibleAssets = roster.filter((p) => (tab === "picks" ? isPick(p) : !isPick(p)) && p.name.toLowerCase().includes(rosterSearch.toLowerCase()));
+  const ready = !loading && !identityLoading && !dataLoading && !error;
 
-  // Filters
-  const [playerCountMin, setPlayerCountMin] = useState(1);
-  const [playerCountMax, setPlayerCountMax] = useState(2);
-  const [salaryMin, setSalaryMin] = useState(5_000_000);
-  const [salaryMax, setSalaryMax] = useState(80_000_000);
-  const [ageMin, setAgeMin] = useState(18);
-  const [ageMax, setAgeMax] = useState(40);
-
-  // Results
-  const [results, setResults] = useState<PackageResult[]>([]);
-  const [searched, setSearched] = useState(false);
-
-  const rostered = useMemo(
-    () => allPlayers.filter((p) => p.team !== FREE_AGENCY_TEAM && !isDeadCap(p)),
-    [allPlayers]
-  );
-
-  const myPlayers = useMemo(
-    () => rostered.filter((p) => p.team === teamName).sort((a, b) => (getCurrentSalary(b) || 0) - (getCurrentSalary(a) || 0)),
-    [rostered, teamName]
-  );
-
-  const filteredMyPlayers = useMemo(() => {
-    if (!rosterSearch) return myPlayers;
-    const q = rosterSearch.toLowerCase();
-    return myPlayers.filter((p) => p.name.toLowerCase().includes(q));
-  }, [myPlayers, rosterSearch]);
-
-  // Determine user's cap status
-  const myTeamPlayers = useMemo(
-    () => allPlayers.filter((p) => p.team === teamName),
-    [allPlayers, teamName]
-  );
-  const myCapStatus = getCapStatus(getTeamTotalCap(myTeamPlayers));
-
-  // User's package fair value
-  const userPackageFV = useMemo(
-    () => selectedPlayers.reduce((sum, p) => sum + (playerValues[p.id]?.fairValue ?? 0), 0),
-    [selectedPlayers, playerValues]
-  );
-
-  const userPackageSalary = useMemo(
-    () => selectedPlayers.reduce((sum, p) => sum + (getCurrentSalary(p) || 0), 0),
-    [selectedPlayers]
-  );
-
-  const findPackages = useCallback(() => {
-    if (selectedPlayers.length === 0) return;
-
-    // Group other teams' players
-    const teamMap = new Map<string, Player[]>();
-    for (const p of rostered) {
-      if (p.team === teamName) continue;
-      if (!teamMap.has(p.team)) teamMap.set(p.team, []);
-      teamMap.get(p.team)!.push(p);
-    }
-
-    // If user is over hard cap, only search green (under) teams
-    const eligibleTeams = new Map<string, Player[]>();
-    for (const [team, players] of teamMap) {
-      const allTeamPlayers = allPlayers.filter((p) => p.team === team);
-      const status = getCapStatus(getTeamTotalCap(allTeamPlayers));
-      if (myCapStatus === "over" && status !== "under") continue;
-      eligibleTeams.set(team, players);
-    }
-
-    const packages: PackageResult[] = [];
-
-    for (const [team, players] of eligibleTeams) {
-      // Filter by age range and having fair value data
-      const eligible = players.filter((p) => {
-        const pv = playerValues[p.id];
-        if (!pv) return false;
-        if (pv.age < ageMin || pv.age > ageMax) return false;
-        return true;
-      });
-
-      // Find combinations for each size in the player count range
-      const combos: Player[][] = [];
-      for (let size = playerCountMin; size <= playerCountMax; size++) {
-        combos.push(...getCombinations(eligible, size));
-      }
-
-      for (const combo of combos) {
-        const totalSalary = combo.reduce((s, p) => s + (getCurrentSalary(p) || 0), 0);
-        if (totalSalary < salaryMin || totalSalary > salaryMax) continue;
-
-        const totalFV = combo.reduce((s, p) => s + (playerValues[p.id]?.fairValue ?? 0), 0);
-        const diff = Math.abs(totalFV - userPackageFV);
-
-        // Only show packages within 25% of user's fair value
-        if (userPackageFV > 0 && diff > userPackageFV * 0.25) continue;
-
-        packages.push({
-          team,
-          players: combo.map((p) => ({
-            ...p,
-            fairValue: playerValues[p.id]?.fairValue ?? 0,
-            age: playerValues[p.id]?.age ?? 0,
-          })),
-          totalSalary,
-          totalFairValue: totalFV,
-          fairValueDiff: diff,
-        });
-      }
-    }
-
-    // Sort by closest fair value match
-    packages.sort((a, b) => a.fairValueDiff - b.fairValueDiff);
-
-    setResults(packages.slice(0, 50)); // Top 50 results
-    setSearched(true);
-  }, [selectedPlayers, rostered, teamName, allPlayers, myCapStatus, playerValues, playerCountMin, playerCountMax, salaryMin, salaryMax, ageMin, ageMax, userPackageFV]);
-
-  function sendToTradeMachine(pkg: PackageResult) {
-    const params = new URLSearchParams();
-    params.set("team1", teamName ?? "");
-    params.set("team1out", selectedPlayers.map((p) => p.name).join(","));
-    params.set("team2", pkg.team);
-    params.set("team2out", pkg.players.map((p) => p.name).join(","));
-    router.push(`/trades?${params.toString()}`);
+  function invalidate() { searchAbort.current?.abort(); setSearching(false); setSearched(false); setResults([]); setProgress(null); }
+  function updateFilters(update: Partial<FinderFilters>) { invalidate(); setPreset("custom"); setFilters((f) => ({ ...f, ...update })); }
+  function updateRule(id: number, update: Partial<PlayerRule>) { updateFilters({ rules: filters.rules.map((r) => r.id === id ? { ...r, ...update } : r) }); }
+  function applyPreset(value: string) {
+    invalidate(); setPreset(value);
+    const rule = (ageUnder: number | null, fppgOver: number | null): PlayerRule => ({ id: nextRule.current++, count: 1, position: "any", ageUnder, fppgOver });
+    if (value === "young") setFilters({ ...defaults, playersMin: 2, playersMax: 3, salaryMax: 30000000, rules: [rule(25, 15)] });
+    else if (value === "win") setFilters({ ...defaults, rules: [rule(null, 30)] });
+    else if (value === "draft") setFilters({ ...defaults, playersMin: 0, playersMax: 1, picksMin: 1, picksMax: 2 });
+    else setFilters(defaults);
   }
-
-  function togglePlayer(player: Player) {
-    setSelectedPlayers((prev) => {
-      if (prev.some((p) => p.id === player.id)) {
-        return prev.filter((p) => p.id !== player.id);
-      }
-      return [...prev, player];
-    });
-    setSearched(false);
-    setResults([]);
+  async function search() {
+    searchAbort.current?.abort(); const controller = new AbortController(); searchAbort.current = controller;
+    setSearching(true); setSearched(false); setResults([]); setProgress(null);
+    const iterator = findTrades(players, picks, info, pickInfo, team, offer, filters);
+    while (!controller.signal.aborted) {
+      const step = iterator.next();
+      if (step.done) { setResults(step.value); setSearched(true); setSearching(false); break; }
+      setProgress(step.value); await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   }
-
-  if (loading || valuesLoading) {
-    return (
-      <div className="flex items-center justify-center h-96 text-text-muted">
-        Loading...
-      </div>
-    );
+  function openTrade(match: TradeMatch) {
+    const query = new URLSearchParams({ team1: team, team1ids: offer.map((p) => p.id).join(","), team2: match.team, team2ids: match.assets.map((p) => p.id).join(",") });
+    router.push(`/trades?${query}`);
   }
+  function assetCard(p: Player, selectable: boolean) {
+    const pick = isPick(p), selected = offerIds.includes(p.id), scout = info[p.id], valuation = valueOf(p);
+    const content = <>
+      <span className="finder-card-top"><span>{pick ? "DRAFT PICK" : scout?.positions.join(" / ") || "PLAYER"}</span><span>{selectable ? (selected ? "✓ IN OFFER" : valuation == null ? "UNVALUED" : "+ ADD") : pick ? "PICK" : "PLAYER"}</span></span>
+      <span className="finder-card-name">{p.name}</span>
+      <span className="finder-card-stats">
+        <span><small>{pick ? "PROJ. SLOT" : "FPPG"}</small><b>{pick ? `#${pickInfo[p.id]?.slot ?? "—"}` : p.ppg?.toFixed(1) ?? "—"}</b></span>
+        <span><small>{pick ? "ROOKIE COST*" : "AGE"}</small><b>{pick ? formatSalary(pickInfo[p.id]?.salary ?? null) : scout?.age ?? "—"}</b></span>
+        <span><small>COST</small><b>{pick ? "$0" : formatSalary(getCurrentSalary(p))}</b></span>
+      </span>
+      <span className="finder-card-value">VALUE <b>{valuation == null ? "Unavailable" : formatSalary(valuation * 1000000)}</b></span>
+    </>;
+    return selectable ? <button key={p.id} type="button" className={`finder-asset ${pick ? "finder-pick" : ""} ${selected ? "finder-selected" : ""}`} aria-pressed={selected} disabled={valuation == null || !ready} onClick={() => { invalidate(); setOfferIds((ids) => selected ? ids.filter((id) => id !== p.id) : [...ids, p.id]); }}>{content}</button>
+      : <div key={p.id} className={`finder-asset ${pick ? "finder-pick" : ""}`}>{content}</div>;
+  }
+  const field = (label: string, value: string, onChange: (v: string) => void, opts: { value: string; label: string }[], ariaLabel = label) => <label className="finder-label">{label}<Select value={value} onChange={onChange} options={opts} ariaLabel={ariaLabel} /></label>;
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-6">
-        <h1 className="text-4xl">Trade Finder</h1>
-        <span className="text-sm text-text-muted">
-          {teamName ? `${teamName}${owner?.user_name ? ` · ${owner.user_name}` : ""}` : ""}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: select your players */}
-        <div className="lg:col-span-1">
-          <div className="bg-surface rounded-sm border border-border overflow-hidden">
-            <div className="p-4 border-b border-border">
-              <h2 className="text-xl text-text mb-2">
-                Your Players to Trade
-              </h2>
-              <input
-                type="text"
-                placeholder="Search roster..."
-                value={rosterSearch}
-                onChange={(e) => setRosterSearch(e.target.value)}
-                className="w-full bg-surface-light border border-border rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-
-            {/* Selected players */}
-            {selectedPlayers.length > 0 && (
-              <div className="p-3 border-b border-border bg-primary/5">
-                <div className="text-xs text-text-dim mb-1.5">
-                  Selected ({selectedPlayers.length}) &mdash; {formatSalary(userPackageSalary)}
-                </div>
-                <div className="space-y-1">
-                  {selectedPlayers.map((p) => (
-                    <div
-                      key={p.id}
-                      className="flex items-center justify-between bg-primary/10 rounded px-2 py-1.5 text-sm gap-2"
-                    >
-                      <span className="font-medium truncate min-w-0">{p.name}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-text-muted font-mono text-xs">
-                          {formatSalary(getCurrentSalary(p))}
-                        </span>
-                        <button
-                          onClick={() => togglePlayer(p)}
-                          className="text-text-dim hover:text-cap-over text-xs"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Roster list */}
-            <div className="max-h-[400px] overflow-y-auto">
-              {filteredMyPlayers
-                .filter((p) => !selectedPlayers.some((s) => s.id === p.id))
-                .map((player) => {
-                  const hasValue = !!playerValues[player.id];
-                  return (
-                  <button
-                    key={player.id}
-                    onClick={() => hasValue && togglePlayer(player)}
-                    disabled={!hasValue}
-                    className={`w-full text-left px-3 sm:px-4 py-2.5 border-b border-border/50 flex justify-between items-center gap-2 ${
-                      hasValue
-                        ? "hover:bg-surface-light transition-colors"
-                        : "opacity-40 cursor-not-allowed"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-sm font-medium truncate">{player.name}</span>
-                      {!hasValue && (
-                        <span className="text-xs text-text-dim shrink-0">No stats</span>
-                      )}
-                    </div>
-                    <span className="text-xs text-text-dim font-mono shrink-0">
-                      {formatSalary(getCurrentSalary(player))}
-                    </span>
-                  </button>
-                  );
-                })}
-            </div>
-          </div>
-        </div>
-
-        {/* Right column: filters + results */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Filters */}
-          <div className="bg-surface rounded-sm border border-border p-4">
-            <h2 className="text-xl text-text mb-4">
-              Search Filters
-            </h2>
-
-            <div className="space-y-4">
-              {/* Player count range */}
-              <div>
-                <label className="text-xs text-text-dim block mb-1">
-                  Players in return package: {playerCountMin} &ndash; {playerCountMax}
-                </label>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-text-dim w-8">Min</span>
-                    <input
-                      type="range"
-                      min={1}
-                      max={4}
-                      value={playerCountMin}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        setPlayerCountMin(Math.min(v, playerCountMax));
-                        setSearched(false);
-                      }}
-                      className="flex-1"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-text-dim w-8">Max</span>
-                    <input
-                      type="range"
-                      min={1}
-                      max={4}
-                      value={playerCountMax}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        setPlayerCountMax(Math.max(v, playerCountMin));
-                        setSearched(false);
-                      }}
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Age range */}
-              <div>
-                <label className="text-xs text-text-dim block mb-1">
-                  Age range: {ageMin} &ndash; {ageMax}
-                </label>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-text-dim w-8">Min</span>
-                    <input
-                      type="range"
-                      min={18}
-                      max={45}
-                      value={ageMin}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        setAgeMin(Math.min(v, ageMax));
-                        setSearched(false);
-                      }}
-                      className="flex-1"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-text-dim w-8">Max</span>
-                    <input
-                      type="range"
-                      min={18}
-                      max={45}
-                      value={ageMax}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        setAgeMax(Math.max(v, ageMin));
-                        setSearched(false);
-                      }}
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Salary range */}
-              <div>
-                <label className="text-xs text-text-dim block mb-1">
-                  Total package salary: {formatSalary(salaryMin)} &ndash; {formatSalary(salaryMax)}
-                </label>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-text-dim w-8">Min</span>
-                    <input
-                      type="range"
-                      min={1_000_000}
-                      max={200_000_000}
-                      step={1_000_000}
-                      value={salaryMin}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        setSalaryMin(Math.min(v, salaryMax));
-                        setSearched(false);
-                      }}
-                      className="flex-1"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-text-dim w-8">Max</span>
-                    <input
-                      type="range"
-                      min={1_000_000}
-                      max={200_000_000}
-                      step={1_000_000}
-                      value={salaryMax}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        setSalaryMax(Math.max(v, salaryMin));
-                        setSearched(false);
-                      }}
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={findPackages}
-              disabled={selectedPlayers.length === 0}
-              className="w-full mt-4 py-2.5 bg-primary text-white rounded-sm font-medium disabled:opacity-40 hover:bg-primary-hover transition-colors"
-            >
-              Find Packages
-            </button>
-
-            {myCapStatus === "over" && (
-              <p className="text-xs text-cap-over mt-2 text-center">
-                You are over the hard cap &mdash; only showing packages from under-cap teams
-              </p>
-            )}
-          </div>
-
-          {/* Results */}
-          {searched && (
-            <div className="bg-surface rounded-sm border border-border overflow-hidden">
-              <div className="p-4 border-b border-border">
-                <h2 className="text-xl text-text">
-                  Results ({results.length})
-                </h2>
-              </div>
-
-              {results.length === 0 ? (
-                <div className="p-8 text-center text-text-dim text-sm">
-                  No matching packages found. Try adjusting your filters.
-                </div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {results.map((pkg, i) => (
-                    <div
-                      key={i}
-                      className="p-3 sm:p-4 hover:bg-surface-light/50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between mb-2 gap-2">
-                        <span className="font-bold text-sm truncate min-w-0">{pkg.team}</span>
-                        <span className="text-xs text-text-muted font-mono shrink-0">
-                          {formatSalary(pkg.totalSalary)}
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        {pkg.players.map((p) => (
-                          <div
-                            key={p.id}
-                            className="flex items-center justify-between text-sm gap-2"
-                          >
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="truncate">{p.name}</span>
-                              <span className="text-xs sm:text-xs text-text-dim shrink-0">
-                                {p.age}
-                              </span>
-                            </div>
-                            <span className="font-mono text-text-muted text-xs shrink-0">
-                              {formatSalary(getCurrentSalary(p))}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <button
-                        onClick={() => sendToTradeMachine(pkg)}
-                        className="mt-2 w-full py-1.5 text-xs font-medium bg-primary/10 text-primary border border-primary/30 rounded-sm hover:bg-primary/15 transition-colors"
-                      >
-                        Send to Trade Machine
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+  return <div className="finder-page">
+    <div className="finder-title"><div><h1>Trade Finder</h1><p className="text-text-muted mt-3">Build your offer. Set your targets. Find the trade.</p></div><span className="finder-season-tag">PLAYERS + PICKS</span></div>
+    <div className="finder-scoreboard" aria-label="Your offer totals">
+      <div><small>YOUR OFFER</small><strong>{offer.filter((p) => !isPick(p)).length}<span> PLAYERS</span> + {offer.filter(isPick).length}<span> PICKS</span></strong></div>
+      <div><small>CURRENT COST</small><strong>{formatSalary(offerSalary)}</strong></div>
+      <div><small>TRADE VALUE</small><strong>{formatSalary(offerValue * 1000000)}</strong></div>
     </div>
-  );
-}
-
-/** Generate all combinations of size k from array */
-function getCombinations<T>(arr: T[], k: number): T[][] {
-  if (k === 0) return [[]];
-  if (arr.length < k) return [];
-  const results: T[][] = [];
-
-  function helper(start: number, current: T[]) {
-    if (current.length === k) {
-      results.push([...current]);
-      return;
-    }
-    // Prune: not enough elements left
-    if (arr.length - start < k - current.length) return;
-    // Cap results to prevent browser freeze on large rosters
-    if (results.length >= 5000) return;
-
-    for (let i = start; i < arr.length; i++) {
-      current.push(arr[i]);
-      helper(i + 1, current);
-      current.pop();
-    }
-  }
-
-  helper(0, []);
-  return results;
+    {error && <div className="finder-notice" role="alert">{error} <button type="button" onClick={() => setRetry((n) => n + 1)}>Retry</button></div>}
+    {!positionsAvailable && !dataLoading && <div className="finder-notice">Sleeper positions are unavailable. Position rules exclude players without position data. <button type="button" onClick={() => setRetry((n) => n + 1)}>Retry</button></div>}
+    {!loading && !players.length && <div className="finder-notice" role="alert">League rosters could not be loaded. <button type="button" onClick={() => window.location.reload()}>Reload</button></div>}
+    <div className="finder-workbench">
+      <section className="finder-panel">
+        <div className="finder-panel-head"><span>01</span><h2>Your offer</h2><button type="button" disabled={!offer.length} onClick={() => { invalidate(); setOfferIds([]); }}>Clear</button></div>
+        <div className="finder-panel-body">
+          <Select value={team} onChange={(t) => { invalidate(); setChosenTeam(t); setOfferIds([]); setRosterSearch(""); }} options={teams.map((t) => ({ value: t, label: t }))} placeholder="Choose a team to search from" ariaLabel="Offering team" />
+          <div className="finder-tabs" role="group" aria-label="Offer asset type">
+            <button type="button" aria-pressed={tab === "players"} onClick={() => setTab("players")}>Players <span>{roster.filter((p) => !isPick(p)).length}</span></button>
+            <button type="button" aria-pressed={tab === "picks"} onClick={() => setTab("picks")}>Draft picks <span>{roster.filter(isPick).length}</span></button>
+          </div>
+          <input aria-label="Search your assets" placeholder={tab === "picks" ? "Find a season or original team…" : "Find a player…"} value={rosterSearch} onChange={(e) => setRosterSearch(e.target.value)} className="finder-input" />
+          {!!offer.length && <div className="finder-offer-tray" aria-label="Selected offer">{offer.map((p) => <button key={p.id} type="button" onClick={() => { invalidate(); setOfferIds((ids) => ids.filter((id) => id !== p.id)); }} aria-label={`Remove ${p.name} from offer`}>{p.name} <span>×</span></button>)}</div>}
+          <div className="finder-roster">{!ready && !error ? <p className="finder-empty">Loading rosters, picks and scouting data…</p> : !team ? <p className="finder-empty">Choose a team, then tap cards to build an offer.</p> : !visibleAssets.length ? <p className="finder-empty">No {tab === "picks" ? "picks" : "players"} found.</p> : visibleAssets.map((p) => assetCard(p, true))}</div>
+          {tab === "picks" && <p className="finder-footnote">*Projected rookie cost when drafted. Picks cost $0 in this trade.</p>}
+        </div>
+      </section>
+      <section className="finder-panel">
+        <div className="finder-panel-head"><span>02</span><h2>Your targets</h2><button type="button" onClick={() => applyPreset("custom")}>Reset</button></div>
+        <div className="finder-panel-body">
+          {field("Quick setup", preset, applyPreset, [{ value: "custom", label: "Build your own" }, { value: "young", label: "Young depth · 2+ players / under $30M" }, { value: "win", label: "Win now · a player over 30 FPPG" }, { value: "draft", label: "Draft capital · 1–2 picks" }])}
+          <div className="finder-filter-grid">
+            {field("At least players", String(filters.playersMin), (v) => updateFilters({ playersMin: +v, playersMax: Math.max(+v, filters.playersMax) }), options([0,1,2,3,4]), "Minimum players")}
+            {field("Up to players", String(filters.playersMax), (v) => updateFilters({ playersMax: +v, playersMin: Math.min(+v, filters.playersMin) }), options([0,1,2,3,4]), "Maximum players")}
+            {field("At least picks", String(filters.picksMin), (v) => updateFilters({ picksMin: +v, picksMax: Math.max(+v, filters.picksMax) }), options([0,1,2,3]), "Minimum picks")}
+            {field("Up to picks", String(filters.picksMax), (v) => updateFilters({ picksMax: +v, picksMin: Math.min(+v, filters.picksMin) }), options([0,1,2,3]), "Maximum picks")}
+            {field("Pick round", filters.pickRound, (v) => updateFilters({ pickRound: v }), [{ value: "any", label: "Any round" }, { value: "1", label: "1st round only" }, { value: "2", label: "2nd round only" }])}
+            {field("Total cost under", filters.salaryMax === null ? "any" : String(filters.salaryMax), (v) => updateFilters({ salaryMax: v === "any" ? null : +v }), [{ value: "any", label: "Any cost" }, ...[5,10,15,20,25,30,35,40,50,60,80,100,120,150,200].map((n) => ({ value: String(n * 1000000), label: `$${n}M` }))], "Total incoming cost under")}
+          </div>
+          <div className="finder-rules-heading"><h3>Player requirements</h3><button type="button" disabled={filters.rules.length >= 4 || filters.playersMax === 0} onClick={() => updateFilters({ rules: [...filters.rules, { id: nextRule.current++, count: 1, position: "any", ageUnder: null, fppgOver: null }] })}>+ Add rule</button></div>
+          {!filters.rules.length && <p className="finder-footnote">Add a position, age or FPPG requirement. All conditions in a rule must hold for the same player.</p>}
+          {filters.rules.map((r, index) => <fieldset className="finder-rule" key={r.id}>
+            <legend>Rule {index + 1}</legend><button className="finder-remove-rule" type="button" aria-label={`Remove rule ${index + 1}`} onClick={() => updateFilters({ rules: filters.rules.filter((rule) => rule.id !== r.id) })}>×</button>
+            <div className="finder-filter-grid">
+              {field("At least", String(r.count), (v) => updateRule(r.id, { count: +v }), options([1,2,3,4], " player(s)"), `Rule ${index + 1} player count`)}
+              {field("Position", r.position, (v) => updateRule(r.id, { position: v }), [{ value: "any", label: "Any position" }, ...positions.map((p) => ({ value: p, label: p }))], `Rule ${index + 1} position`)}
+              {field("Younger than", r.ageUnder === null ? "any" : String(r.ageUnder), (v) => updateRule(r.id, { ageUnder: v === "any" ? null : +v }), [{ value: "any", label: "Any age" }, ...options(Array.from({ length: 23 }, (_, i) => i + 19), " years")], `Rule ${index + 1} age under`)}
+              {field("FPPG higher than", r.fppgOver === null ? "any" : String(r.fppgOver), (v) => updateRule(r.id, { fppgOver: v === "any" ? null : +v }), [{ value: "any", label: "Any FPPG" }, ...options(Array.from({ length: 60 }, (_, i) => i + 1))], `Rule ${index + 1} FPPG over`)}
+            </div>
+            {r.count > filters.playersMax && <p className="finder-rule-warning">This rule needs more players than your package allows.</p>}
+          </fieldset>)}
+          {filters.rules.length > 1 && <p className="finder-footnote">Every rule must pass. A player can satisfy more than one rule.</p>}
+          <div className="finder-filter-grid mt-4">
+            {field("Value range", filters.valueTolerance === null ? "any" : String(filters.valueTolerance), (v) => updateFilters({ valueTolerance: v === "any" ? null : +v }), [{ value: "0.1", label: "Within 10% of your offer" }, { value: "0.25", label: "Within 25% of your offer" }, { value: "0.5", label: "Within 50% of your offer" }, { value: "any", label: "Any trade value" }], "Trade value tolerance")}
+            {field("Rank matches by", filters.sort, (v) => updateFilters({ sort: v as FinderFilters["sort"] }), [{ value: "value", label: "Closest trade value" }, { value: "fppg", label: "Most combined FPPG" }, { value: "cost", label: "Lowest total cost" }])}
+          </div>
+          <p className="finder-footnote mt-3">FPPG uses current league stats. Age is today’s age; positions use Sleeper eligibility. Both teams must pass current cap rules, with no salary retained.</p>
+          <button type="button" className={`finder-search ${searching ? "finder-scanning" : ""}`} disabled={!ready || !offer.length || filters.rules.some((r) => r.count > filters.playersMax) || (!filters.playersMax && !filters.picksMax)} onClick={() => searching ? invalidate() : void search()}>{searching ? "Stop search" : "Search trades"}<span>{searching ? "■" : "→"}</span></button>
+          {!offer.length && <p className="finder-footnote text-center mt-2">Add a player or pick to your offer to search.</p>}
+        </div>
+      </section>
+    </div>
+    <section className="finder-results" aria-live="polite" aria-busy={searching}>
+      <div className="finder-results-heading"><div className="finder-panel-head"><span>03</span><h2>Trade matches</h2></div><span>{searched ? `${results.length}${results.length === 50 ? " best" : ""} matches` : searching ? "SEARCHING" : "READY WHEN YOU ARE"}</span></div>
+      {searching ? <div className="finder-empty"><div className="finder-progress"><div style={{ width: `${progress ? 100 * progress.teamsDone / Math.max(1, progress.teamsTotal) : 0}%` }} /></div><strong>Checking the league…</strong><p>{progress?.teamsDone ?? 0} / {progress?.teamsTotal ?? Math.max(0, teams.length - 1)} teams · {(progress?.checked ?? 0).toLocaleString()} combinations checked</p></div>
+        : !searched ? <div className="finder-empty">Your matches will appear here. Try a quick setup or build your own requirements.</div>
+        : !results.length ? <div className="finder-empty"><strong>No matches with these targets.</strong><p>Try a wider value range, allow picks, or loosen a player requirement.</p></div>
+        : <div className="finder-match-grid">{results.map((match, i) => <article className="finder-match" key={`${match.team}:${match.assets.map((p) => p.id).join(",")}`}>
+          <div className="finder-match-head"><span className="finder-rank">{String(i + 1).padStart(2, "0")}</span><h3>{match.team}</h3><span className="finder-cap-pass">CAP ✓</span></div>
+          <div className="finder-match-assets">{match.assets.map((p) => assetCard(p, false))}</div>
+          {match.assets.some(isPick) && <p className="finder-footnote px-3">*Rookie cost is projected; picks cost $0 now.</p>}
+          <div className="finder-match-totals"><span><small>COST</small><b>{formatSalary(match.salary)}</b></span><span><small>VALUE</small><b>{formatSalary(match.value * 1000000)}</b></span><span><small>VALUE GAP</small><b>{offerValue ? `${Math.round(match.difference / offerValue * 100)}%` : formatSalary(match.difference * 1000000)}</b></span></div>
+          <button type="button" className="finder-open-trade" onClick={() => openTrade(match)}>Open in Trade Machine <span>→</span></button>
+        </article>)}</div>}
+    </section>
+  </div>;
 }

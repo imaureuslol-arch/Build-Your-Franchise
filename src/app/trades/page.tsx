@@ -2,11 +2,11 @@
 
 export const dynamic = "force-dynamic";
 
-import { Suspense, useState, useCallback, useEffect } from "react";
+import { Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePlayers } from "@/lib/hooks";
 import { useUserTeam } from "@/lib/user-context";
-import { Player, FREE_AGENCY_TEAM, getCurrentSalary, isPick } from "@/lib/types";
+import { Player, FREE_AGENCY_TEAM, getCurrentSalary, isPick, isPickId } from "@/lib/types";
 import TeamTradeColumn from "@/components/TeamTradeColumn";
 import TradeSidebar from "@/components/TradeSidebar";
 import TradeProposals, { type TradeView } from "@/components/TradeProposals";
@@ -63,6 +63,8 @@ function TradesPage() {
 
   // Draft picks, as salary-free entries owned by their current team.
   const [picks, setPicks] = useState<Player[]>([]);
+  const [picksLoaded, setPicksLoaded] = useState(false);
+  const populatedQuery = useRef<string | null>(null);
   const [power, setPower] = useState<Record<string, number>>({});
   const [pickValues, setPickValues] = useState<Record<number, { fairValue: number; salary: number; slot: number }>>({});
   const loadPicks = useCallback(async () => {
@@ -70,11 +72,11 @@ function TradesPage() {
     if (!res.ok) return;
     const data = await res.json();
     setPicks(data.picks);
+    setPicksLoaded(true);
     setPower(data.power ?? {});
     setPickValues(data.values ?? {});
   }, []);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPicks();
   }, [loadPicks]);
 
@@ -87,7 +89,13 @@ function TradesPage() {
   // Pre-populate from query params (roster search sends ?team=, trade finder sends ?team1=&team1out=&team2=&team2out=)
   useEffect(() => {
     if (allPlayers.length === 0) return;
-    const rostered = allPlayers.filter((p) => p.team !== FREE_AGENCY_TEAM);
+    const query = searchParams.toString();
+    if (populatedQuery.current === query) return;
+    const team1Ids = (searchParams.get("team1ids") ?? "").split(",").filter(Boolean).map(Number);
+    const team2Ids = (searchParams.get("team2ids") ?? "").split(",").filter(Boolean).map(Number);
+    if ([...team1Ids, ...team2Ids].some(isPickId) && !picksLoaded) return;
+    const rostered = [...allPlayers.filter((p) => p.team !== FREE_AGENCY_TEAM), ...picks];
+    populatedQuery.current = query;
 
     const team1 = searchParams.get("team1");
     const team2 = searchParams.get("team2");
@@ -96,8 +104,8 @@ function TradesPage() {
     if (team1 && team2) {
       const team1OutNames = (searchParams.get("team1out") ?? "").split(",").filter(Boolean);
       const team2OutNames = (searchParams.get("team2out") ?? "").split(",").filter(Boolean);
-      const team1Out = rostered.filter((p) => p.team === team1 && team1OutNames.includes(p.name));
-      const team2Out = rostered.filter((p) => p.team === team2 && team2OutNames.includes(p.name));
+      const team1Out = rostered.filter((p) => p.team === team1 && (searchParams.has("team1ids") ? team1Ids.includes(p.id) : team1OutNames.includes(p.name)));
+      const team2Out = rostered.filter((p) => p.team === team2 && (searchParams.has("team2ids") ? team2Ids.includes(p.id) : team2OutNames.includes(p.name)));
 
       setSlots([
         { team: team1, playersOut: team1Out, retainedSalary: 0 },
@@ -122,7 +130,7 @@ function TradesPage() {
         return next;
       });
     }
-  }, [searchParams, allPlayers]);
+  }, [searchParams, allPlayers, picks, picksLoaded]);
 
   const rostered = allPlayers.filter((p) => p.team !== FREE_AGENCY_TEAM);
   const allTeams = [
