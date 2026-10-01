@@ -41,7 +41,6 @@ export default function FreeAgencySchedule({ round, now, canManage, bids, awards
         <p className="text-sm text-text-muted mt-1">Higher Bid Values shorten the time the player will spend before accepting them. New bids add 12 hours to countdown.</p>
       </div>
     </div>
-    <p className="text-xs text-text-dim">Weighted bids at or above the larger of twice fair value and fair value + $10M start a 3-day timer. Bids 20% below value start a 14-day timer; bids 50% below start a 30-day timer. Intermediate bids scale between these durations. Previous owners have 7 days to match restricted free agents. A commissioner applies every award; Sleeper moves remain manual.</p>
     {error && <p role="alert" className="text-sm text-cap-over">{error}</p>}
     {canManage && <button className={button} disabled={busy != null || pending > 0}
       onClick={() => act("new_round", {action:"new_round"})}>Start next round</button>}
