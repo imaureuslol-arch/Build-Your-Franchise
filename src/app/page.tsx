@@ -3,6 +3,9 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import CapDeadline from "@/components/CapDeadline";
+import CapWarning from "@/components/CapWarning";
+import { useUserTeam } from "@/lib/user-context";
 import { useMemo } from "react";
 import { usePlayers, useTeamOwners } from "@/lib/hooks";
 import {
@@ -20,6 +23,7 @@ const statusText = { under: "text-cap-under", yellow: "text-cap-yellow", over: "
 const statusBar = { under: "bg-cap-under", yellow: "bg-cap-yellow", over: "bg-cap-over" } as const;
 
 export default function HomePage() {
+  const { owner } = useUserTeam();
   const { players, loading: pLoading } = usePlayers();
   const { owners, loading: oLoading } = useTeamOwners();
   const loading = pLoading || oLoading;
@@ -83,6 +87,7 @@ export default function HomePage() {
         </dl>
       </div>
 
+      <div className="mb-4"><CapWarning owner={owner} /></div>
       <table className="w-full text-sm card-frame">
         <thead>
           <tr className="card-head text-left font-blocky italic uppercase">
@@ -105,6 +110,7 @@ export default function HomePage() {
                   <Link href={`/rosters?team=${encodeURIComponent(t.team)}`} className="hover:underline">
                     {t.team}
                   </Link>
+                  <CapDeadline deadline={owners.get(t.team)?.capDeadline} />
                 </td>
                 <td className="py-2 pr-4 text-text-muted hidden md:table-cell">{t.owner}</td>
                 <td className="py-2 pr-4 font-mono text-right text-text-muted hidden sm:table-cell">{t.count}</td>
@@ -132,6 +138,7 @@ export default function HomePage() {
       <p className="mt-2 text-xs text-text-dim hidden lg:block">
         Faint line: soft cap. Solid line: hard cap.
       </p>
+      <p className="mt-2 text-xs text-text-dim">Oct 15–Mar 30: teams have 10 days to get under the hard cap before their lowest-value players are waived.</p>
     </div>
   );
 }

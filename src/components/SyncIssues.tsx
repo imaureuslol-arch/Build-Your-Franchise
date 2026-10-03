@@ -14,6 +14,7 @@ const LABELS: Record<string, string> = {
   no_contract: "On a Sleeper roster, no contract",
   not_on_sleeper_roster: "Has a contract, not on any Sleeper roster",
   wrong_team: "Different team than in Sleeper — make the trade in Sleeper",
+  waived_on_site: "Waived on BYF — remove from Sleeper",
 };
 
 /** Commissioner panel: run the Sleeper sync and list what doesn't line up. */
@@ -39,7 +40,7 @@ export default function SyncIssues() {
       (moving || releasing) &&
       !confirm(
         `Make the site match Sleeper? ${moving} player${moving === 1 ? "" : "s"} will move to their Sleeper team` +
-          ` and ${releasing} will be released (contract erased). Site trades that Sleeper doesn't have are undone.`
+          ` and ${releasing} will be waived (50% of current salary remains during Oct 15–Mar 30; no offseason penalty). Site trades that Sleeper doesn't have are undone.`
       )
     ) return;
     setRunning(true);
@@ -92,7 +93,7 @@ export default function SyncIssues() {
                   .filter((i) => i.kind === k)
                   .map((i) => (
                     <li key={i.id} className="px-4 py-2 text-sm flex justify-between gap-2">
-                      {i.kind === "wrong_team" ? (
+                      {i.kind === "wrong_team" || i.kind === "waived_on_site" ? (
                         <span>{i.detail}</span>
                       ) : (
                         <>

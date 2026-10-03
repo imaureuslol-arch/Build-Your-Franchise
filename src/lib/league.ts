@@ -1,6 +1,7 @@
 import { sql } from "./db";
 import { DEAD_CAP_NAME, FREE_AGENCY_TEAM, getSalaryYears, type Player, type TeamOwner } from "./types";
 import { loadSleeperConferences } from "./sleeper-conferences";
+import { enforceHardCap } from "./cap-enforcement";
 
 /**
  * Every player (rostered and free agents) with contracts flattened to
@@ -9,6 +10,7 @@ import { loadSleeperConferences } from "./sleeper-conferences";
  * and validateTrade expect.
  */
 export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwner[] }> {
+  await enforceHardCap();
   const [players, contracts, deadCap, teams, conferences] = await Promise.all([
     sql`select p.id, p.name, t.name as team, p.ppg, p.avg_gp, p.nba_experience, p.contract_version
         from players p left join teams t on t.id = p.team_id
@@ -18,7 +20,9 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
     sql`select t.id as team_id, t.name as team, d.season, sum(d.amount)::bigint as amount
         from dead_cap d join teams t on t.id = d.team_id
         group by t.id, t.name, d.season`,
-    sql`select id, name, owner_name, sleeper_user_id, conference, sleeper_roster from teams order by name`,
+    sql`select t.id, t.name, t.owner_name, t.sleeper_user_id, t.conference, t.sleeper_roster, c.deadline,
+        case when c.deadline is not null then byf_cap_release_preview(t.id,c.season) else '[]'::jsonb end as drops
+        from teams t left join team_cap_status c on c.team_id=t.id order by t.name`,
     // Page reads use Sleeper's split directly; stored assignments are an outage fallback.
     loadSleeperConferences(process.env.SLEEPER_LEAGUE_ID ?? "").catch(() => new Map<number, string | null>()),
   ]);
@@ -53,6 +57,8 @@ export async function loadLeague(): Promise<{ players: Player[]; owners: TeamOwn
     user_name: t.owner_name ?? "(no owner)",
     owner_key: t.sleeper_user_id != null ? `sleeper:${t.sleeper_user_id}` : `team:${t.id}`,
     conference: conferences.has(t.sleeper_roster) ? conferences.get(t.sleeper_roster)! : t.conference,
+    capDeadline: t.deadline ?? null,
+    capDropPlayers: t.drops ?? [],
   }));
 
   const all = [...byId.values(), ...deadRows.values()].sort((a, b) => a.name.localeCompare(b.name));

@@ -16,10 +16,11 @@ function load(file, deps = {}) {
 const messaging = load('src/lib/sleeper-messages.ts');
 const originalFetch = globalThis.fetch;
 const originalToken = process.env.SLEEPER_TOKEN;
+const botId = '1412094574553280512';
 let calls = [];
 let checks = 0;
 const test = async (name, run) => { await run(); checks++; console.log('PASS ' + name); };
-const mockSleeper = ({ existing = true, error = null, failure = null, mismatch = false } = {}) => {
+const mockSleeper = ({ existing = true, error = null, failure = null, mismatch = false, sender = botId, encoded = false } = {}) => {
   calls = [];
   globalThis.fetch = async (url, options) => {
     assert.equal(url, 'https://sleeper.com/graphql');
@@ -30,10 +31,10 @@ const mockSleeper = ({ existing = true, error = null, failure = null, mismatch =
     if (error) return Response.json({ errors: [{ code: error, message: 'SECRET-upstream-detail' }] });
     const v = body.variables;
     const data = {
-      me: { user_id: '100' },
+      me: { user_id: sender },
       get_dm_by_members: existing ? { dm_id: '300', dm_type: 'single' } : null,
-      create_message: { message_id: '400', parent_id: mismatch ? 'wrong-room' : '300', author_id: '100', text: v.text },
-      create_dm: { dm_id: '300', dm_type: 'single', last_message_id: '400', last_author_id: '100', last_message_text: v.message_text },
+      create_message: { message_id: '400', parent_id: mismatch ? 'wrong-room' : '300', author_id: sender, text: encoded ? v.text?.replaceAll("'",'&#39;') : v.text },
+      create_dm: { dm_id: '300', dm_type: 'single', last_message_id: '400', last_author_id: sender, last_message_text: encoded ? v.message_text?.replaceAll("'",'&#39;') : v.message_text },
     };
     return Response.json({ data: { [body.operationName]: data[body.operationName] } });
   };
@@ -71,13 +72,25 @@ try {
   await test('existing DM targets the intended recipient and sends once', async () => {
     mockSleeper(); await messaging.sendSleeperDm('200', 'Offer text', 'trade-client-id');
     assert.deepEqual(calls.map(c => c.operationName), ['me', 'get_dm_by_members', 'create_message']);
-    assert.deepEqual(calls[1].variables.members, ['100', '200']);
+    assert.deepEqual(calls[1].variables.members, [botId, '200']);
     assert.deepEqual(calls[2].variables, { parent_id: '300', parent_type: 'dm', text: 'Offer text', client_id: 'trade-client-id' });
   });
   await test('new DM includes its first message in the creation request', async () => {
     mockSleeper({ existing: false }); await messaging.sendSleeperDm('200', 'Offer text', 'trade-client-id');
     assert.deepEqual(calls.map(c => c.operationName), ['me', 'get_dm_by_members', 'create_dm']);
-    assert.deepEqual(calls[2].variables, { members: ['100', '200'], dm_type: 'single', message_text: 'Offer text', client_id: 'trade-client-id' });
+    assert.deepEqual(calls[2].variables, { members: [botId, '200'], dm_type: 'single', message_text: 'Offer text', client_id: 'trade-client-id' });
+  });
+  await test('site notifications reject personal accounts before sending', async () => {
+    mockSleeper({sender:'100'});
+    await assert.rejects(messaging.sendSleeperDm('200','Offer','client'),/Connect FranchiseManagerBot/);
+    assert.deepEqual(calls.map(c=>c.operationName),['me']);
+  });
+  await test('HTML-encoded apostrophes confirm without a second send', async () => {
+    for (const existing of [true,false]) {
+      mockSleeper({existing,encoded:true});
+      await messaging.sendSleeperDm('200',"De'Anthony Melton",'client');
+      assert.equal(calls.length,3);
+    }
   });
   await test('expired auth, network failures and unconfirmed destinations never retry or expose secrets', async () => {
     for (const options of [{ error: 'unauthorized' }, { failure: 'SECRET-session' }, { mismatch: true }]) {

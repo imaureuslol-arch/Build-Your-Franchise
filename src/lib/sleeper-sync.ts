@@ -46,6 +46,16 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function reconcileWaivers(rostered: Map<string, number>): Promise<void> {
+  // A site waiver must not be undone by an old Sleeper roster snapshot.
+  await sql`update player_waivers w set sleeper_pending=false from players p
+    where w.player_id=p.id and w.sleeper_pending and (
+      not exists(select 1 from unnest(${[...rostered.keys()]}::text[], ${[...rostered.values()]}::int[]) r(sleeper_id,team_id)
+        where r.sleeper_id=p.sleeper_id and r.team_id=w.from_team)
+      or (p.contract_version>w.contract_version and p.team_id=w.from_team
+        and exists(select 1 from contracts c where c.player_id=p.id and c.season>=byf_current_season())))`;
+}
+
 export interface SyncResult {
   teamsUpdated: number;
   playersAdded: number;
@@ -92,6 +102,7 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
     if (!team) continue;
     for (const pid of r.players ?? []) rostered.set(pid, team.id);
   }
+  await reconcileWaivers(rostered);
   const wanted = Object.entries(catalogue).filter(
     ([id, p]) => rostered.has(id) || (p.active && p.team)
   );
@@ -116,7 +127,8 @@ export async function syncFromSleeper(leagueId: string): Promise<SyncResult> {
     update players p set team_id = r.team_id
     from unnest(${[...rostered.keys()]}::text[], ${[...rostered.values()]}::int[]) as r(sleeper_id, team_id)
     where p.sleeper_id = r.sleeper_id and p.team_id is null
-      and not exists (select 1 from contracts c where c.player_id = p.id)`;
+      and not exists (select 1 from contracts c where c.player_id = p.id)
+      and not exists (select 1 from player_waivers w where w.player_id=p.id)`;
 
   // New draft years appear here; pick owners are only flagged until applied.
   await seedPicks(await sleeperPicks(leagueId));
@@ -142,15 +154,23 @@ export async function checkRosters(leagueId: string, rosters?: SleeperRoster[]):
     if (!team) continue;
     for (const pid of r.players ?? []) rostered.set(pid, team.id);
   }
+  await reconcileWaivers(rostered);
 
   const book = await sql`
     select p.id, p.sleeper_id, p.name, p.team_id,
+           exists(select 1 from player_waivers w where w.player_id=p.id and w.sleeper_pending) as waiver_pending,
+           exists(select 1 from player_waivers w where w.player_id=p.id) as waived,
            exists (select 1 from contracts c where c.player_id = p.id) as has_contract
     from players p where p.sleeper_id = any(${[...rostered.keys()]}) or p.team_id is not null`;
 
   const issues: { kind: string; player_id: number | null; team_id: number | null; detail: string }[] = [];
   for (const p of book) {
     const sleeperTeam = p.sleeper_id ? rostered.get(p.sleeper_id) : undefined;
+    if (sleeperTeam != null && (p.waiver_pending || (p.waived && p.team_id == null))) {
+      issues.push({ kind: "waived_on_site", player_id: p.id, team_id: sleeperTeam,
+        detail: `${p.name} was waived on BYF. Remove them from the Sleeper roster; sync will not restore their contract.` });
+      continue;
+    }
     if (sleeperTeam != null && !p.has_contract) {
       issues.push({ kind: "no_contract", player_id: p.id, team_id: sleeperTeam, detail: `${p.name} is on a Sleeper roster with no contract` });
     }
@@ -193,7 +213,7 @@ export interface ApplyResult {
  *
  *   on another team in Sleeper   moves there, contract and all
  *   on no Sleeper roster         released: contract for this season and
- *                                later erased, no dead cap
+ *                                later erased; seasonal waiver dead cap applies
  *   picked up, not in the book   joins the team with no contract (flagged)
  *
  * A site trade whose players have all been put back where they started is
@@ -214,9 +234,14 @@ export async function applySleeperRosters(leagueId: string, currentSeason: numbe
     if (team == null) continue;
     for (const pid of r.players ?? []) rostered.set(pid, team);
   }
+  await reconcileWaivers(rostered);
 
   const book = await sql`
-    select id, sleeper_id, name, team_id,
+    select id, sleeper_id, name, team_id, contract_version,
+      exists(select 1 from player_waivers w where w.player_id=players.id and w.sleeper_pending) as waiver_pending,
+      exists(select 1 from player_waivers w where w.player_id=players.id) as waived,
+      coalesce((select jsonb_object_agg(c.season::text,c.amount) from contracts c
+        where c.player_id=players.id and c.season>=${currentSeason}), '{}') as contracts,
       exists(select 1 from restricted_free_agents r where r.player_id=players.id) as restricted
     from players
     where team_id is not null or sleeper_id = any(${[...rostered.keys()]})`;
@@ -226,15 +251,16 @@ export async function applySleeperRosters(leagueId: string, currentSeason: numbe
   const q = [];
   for (const p of book) {
     const target = p.sleeper_id ? rostered.get(p.sleeper_id) : undefined;
+    if (p.waiver_pending) continue;
     if (target != null && p.team_id != null && target !== p.team_id) {
       q.push(sql`update players set team_id = ${target} where id = ${p.id}`);
       movedIds.push(p.id);
       result.moved.push({ player: p.name, from: teamName.get(p.team_id)!, to: teamName.get(target)! });
     } else if (target == null && p.team_id != null) {
-      q.push(sql`update players set team_id = null where id = ${p.id}`);
-      q.push(sql`delete from contracts where player_id = ${p.id} and season >= ${currentSeason}`);
+      q.push(sql`select byf_waive_player(${JSON.stringify({playerId:p.id,expected:{teamId:p.team_id,contracts:p.contracts,contractVersion:p.contract_version}})}::jsonb,
+        null::uuid,null::int,'sleeper')`);
       result.released.push(`${p.name} (${teamName.get(p.team_id)})`);
-    } else if (target != null && p.team_id == null && !p.restricted) {
+    } else if (target != null && p.team_id == null && !p.restricted && !p.waived) {
       q.push(sql`update players set team_id = ${target} where id = ${p.id}`);
       result.joined.push(`${p.name} (${teamName.get(target)})`);
     }

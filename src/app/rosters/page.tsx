@@ -6,6 +6,7 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers, useTeamOwners } from "@/lib/hooks";
 import PickBadge from "@/components/PickBadge";
+import CapWarning from "@/components/CapWarning";
 import type { PickValue } from "@/lib/pick-value";
 import {
   Player,
@@ -276,6 +277,7 @@ export default function RostersPage() {
                   )}
                 </div>
               </div>
+              <CapWarning owner={owners.get(team.team)} />
             </div>
           </button>
         ))}
@@ -315,6 +317,7 @@ export default function RostersPage() {
 
             {/* Cap Projections */}
             <div className="px-4 py-3">
+              <CapWarning owner={owners.get(openTeam.team)} />
               <h3 className="text-lg text-text mb-2">Cap Projections</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {SALARY_YEARS.map((y) => {

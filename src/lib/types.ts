@@ -15,6 +15,8 @@ export interface TeamOwner {
   user_name: string;
   conference: string | null;
   owner_key?: string;
+  capDeadline?: string | null;
+  capDropPlayers?: { id: number; name: string; salary: number; fairValue: number }[];
 }
 
 export interface TeamSummary {

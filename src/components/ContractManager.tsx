@@ -6,9 +6,9 @@ import { SALARY_YEARS, getCurrentSeasonYear } from "@/lib/types";
 import { refreshLeague } from "@/lib/hooks";
 
 interface Team { id: number; name: string }
-interface ContractPlayer { id: number; name: string; teamId: number | null; contracts: Record<string, number> }
+interface ContractPlayer { id: number; name: string; teamId: number | null; contractVersion: number; contracts: Record<string, number>; waiverContracts: Record<string, number> }
 interface DeadCap { id: number; team_id: number; label: string; season: number; amount: number }
-interface Book { players: ContractPlayer[]; teams: Team[]; deadCap: DeadCap[] }
+interface Book { players: ContractPlayer[]; teams: Team[]; deadCap: DeadCap[]; inSeason: boolean; season: number; notificationIssues: { team: string; daysLeft: number }[] }
 const field = "w-full bg-background border border-border rounded-sm px-3 py-2 text-sm";
 const button = "px-4 py-2 rounded-sm bg-primary text-white text-sm disabled:opacity-40";
 const seasonLabel = (year: number) => `${year - 1}–${String(year).slice(2)}`;
@@ -48,6 +48,7 @@ export default function ContractManager() {
       {error && <p role="alert" className="text-sm text-cap-over">{error} <button className="underline" onClick={() => load().then(() => setError("")).catch(e => setError(e.message))}>Reload</button></p>}
       {notice && <p role="status" className="text-sm text-cap-under">{notice}</p>}
       {!book ? <p className="text-sm text-text-muted">Loading contracts…</p> : <>
+        {book.notificationIssues.length>0 && <p role="status" className="text-sm text-cap-over">Sleeper did not confirm cap warnings for {book.notificationIssues.map(n => `${n.team} (${n.daysLeft}-day alert)`).join(", ")}. Check the bot connection and DMs before sending again.</p>}
         <details open className="border border-border bg-surface rounded-sm p-4 space-y-4">
           <summary className="cursor-pointer font-semibold">Correct a contract</summary>
           <label className="block text-sm">Find player
@@ -62,6 +63,9 @@ export default function ContractManager() {
           </ul>}
           {selected && <ContractForm key={JSON.stringify(selected)} player={selected} teams={book.teams}
             save={body => save("/api/commissioner/contracts", body, "Contract saved. Roster and cap totals updated.")} />}
+          {selected?.teamId != null && <WaiveForm key={`waive-${JSON.stringify(selected)}`} player={selected}
+            inSeason={book.inSeason} season={book.season}
+            save={body => save("/api/commissioner/waive", body, "Player waived. Remove them from the Sleeper roster too.")} />}
         </details>
         <DeadCapForm entries={book.deadCap} teams={book.teams}
           save={body => save("/api/commissioner/dead-cap", body, "Dead cap saved. Cap totals updated.")} />
@@ -99,10 +103,39 @@ function ContractForm({ player, teams, save }: { player: ContractPlayer; teams: 
           value={amounts[y]} onChange={e => setAmounts(prev => ({ ...prev, [y]: e.target.value }))} placeholder="No contract" />
       </label>)}
     </div>
-    <p className="text-xs text-text-dim">Blank removes that season’s salary. Moving a player to free agency requires clearing these salaries. Add any release penalty separately under Dead Cap. These changes only affect this site.</p>
+    <p className="text-xs text-text-dim">Blank removes that season’s salary. Use Waive below for releases and automatic dead cap. Contract corrections only affect this site.</p>
     {error && <p role="alert" className="text-sm text-cap-over">{error}</p>}
     <button className={button} disabled={busy}>{busy ? "Saving…" : "Save contract"}</button>
   </form>;
+}
+
+function WaiveForm({ player, inSeason, season, save }: {
+  player: ContractPlayer; inSeason: boolean; season: number; save: (body: unknown) => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const penalty = inSeason ? Math.round((player.waiverContracts[season] ?? 0) / 2) : 0;
+  async function waive() {
+    setBusy(true); setError("");
+    try {
+      await save({ playerId: player.id, expected: { teamId: player.teamId, contracts: player.waiverContracts, contractVersion: player.contractVersion },
+        expectedSeason: season, expectedDeadCap: penalty });
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not waive player."); }
+    finally { setBusy(false); }
+  }
+  return <div className="border-t border-border pt-4 space-y-3">
+    <p className="text-xs text-text-muted">Waiving removes all remaining salaries and sends the player to free agency.
+      {inSeason ? ` ${money(penalty)} stays as dead cap for ${seasonLabel(season)} only.` : " Offseason: no dead cap."}</p>
+    {!confirming ? <button type="button" className="text-sm text-cap-over underline" onClick={() => setConfirming(true)}>Waive {player.name}</button> : <>
+      <p className="text-sm">Waive {player.name}? Remove them from Sleeper after confirming.</p>
+      <div className="flex gap-4">
+        <button type="button" className="text-sm text-cap-over underline disabled:opacity-40" disabled={busy} onClick={waive}>{busy ? "Waiving…" : "Confirm waiver"}</button>
+        <button type="button" className="text-sm underline" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+      </div>
+    </>}
+    {error && <p role="alert" className="text-sm text-cap-over">{error}</p>}
+  </div>;
 }
 
 function DeadCapForm({ entries, teams, save }: { entries: DeadCap[]; teams: Team[]; save: (body: unknown) => Promise<void> }) {

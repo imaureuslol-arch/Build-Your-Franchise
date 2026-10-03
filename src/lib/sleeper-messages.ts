@@ -1,6 +1,17 @@
 /** Server-only Sleeper messaging. Never retry a send with an uncertain outcome. */
 export class SleeperMessageError extends Error {}
 
+const NOTIFICATION_BOT_ID = "1412094574553280512";
+function decodedText(text: string): string {
+  if (typeof text !== "string") return "";
+  const entities: Record<string, string> = { amp: "&", apos: "'", quot: '"', lt: "<", gt: ">" };
+  return text.replace(/&(#x[0-9a-f]+|#\d+|amp|apos|quot|lt|gt);/gi, (match, entity: string) => {
+    if (!entity.startsWith("#")) return entities[entity.toLowerCase()] ?? match;
+    const code = entity[1].toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+    return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+  });
+}
+
 export async function sendSleeperDm(recipientId: string, text: string, clientId: string): Promise<void> {
   const token = process.env.SLEEPER_TOKEN?.trim();
   if (!token) throw new SleeperMessageError("Sleeper messaging is not configured.");
@@ -31,6 +42,9 @@ export async function sendSleeperDm(recipientId: string, text: string, clientId:
 
   const { me } = await request<{ me: { user_id: string } | null }>("me", "query me { me { user_id } }");
   if (!me?.user_id) throw new SleeperMessageError("Sleeper could not identify the connected account.");
+  if (String(me.user_id) !== NOTIFICATION_BOT_ID) {
+    throw new SleeperMessageError("Connect FranchiseManagerBot to send site notifications.");
+  }
   const members = [...new Set([String(me.user_id), recipientId])];
   const { get_dm_by_members: dm } = await request<{ get_dm_by_members: { dm_id: string; dm_type: string } | null }>(
     "get_dm_by_members",
@@ -49,7 +63,7 @@ export async function sendSleeperDm(recipientId: string, text: string, clientId:
       { parent_id: dm.dm_id, parent_type: "dm", text, client_id: clientId },
     );
     if (!message?.message_id || String(message.parent_id) !== String(dm.dm_id)
-      || String(message.author_id) !== String(me.user_id) || message.text !== text) {
+      || String(message.author_id) !== String(me.user_id) || decodedText(message.text) !== text) {
       throw new SleeperMessageError("Sleeper did not confirm delivery. Check the DM before sending again.");
     }
   } else {
@@ -64,7 +78,7 @@ export async function sendSleeperDm(recipientId: string, text: string, clientId:
       { members, dm_type: "single", message_text: text, client_id: clientId },
     );
     if (!created?.dm_id || created.dm_type !== "single" || !created.last_message_id
-      || String(created.last_author_id) !== String(me.user_id) || created.last_message_text !== text) {
+      || String(created.last_author_id) !== String(me.user_id) || decodedText(created.last_message_text) !== text) {
       throw new SleeperMessageError("Sleeper did not confirm delivery. Check the DM before sending again.");
     }
   }

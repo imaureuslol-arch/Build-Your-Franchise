@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useUserTeam } from "@/lib/user-context";
+import CapWarning from "@/components/CapWarning";
 
 export default function AccountPage() {
-  const { teamName, isWhitelisted, isSubCommish, isLoading } = useUserTeam();
+  const { teamName, owner, isWhitelisted, isSubCommish, isLoading } = useUserTeam();
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const loggedIn = !!teamName || isWhitelisted || isSubCommish;
@@ -30,6 +31,7 @@ export default function AccountPage() {
   return (
     <div className="max-w-md mx-auto px-4 py-10 space-y-6">
       <h1 className="text-4xl">Account</h1>
+      <CapWarning owner={owner} />
 
       {!loggedIn ? (
         <p className="text-sm text-text-muted">

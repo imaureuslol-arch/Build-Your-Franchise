@@ -209,6 +209,10 @@ body {
   color: #fff;
 }
 
+.cap-warning-sign { animation: cap-warning-flash 1.4s ease-in-out infinite; }
+@keyframes cap-warning-flash { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .cap-warning-sign { animation: none; } }
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
