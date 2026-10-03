@@ -68,6 +68,7 @@ export async function sendSleeperDm(recipientId: string, text: string, clientId:
     }
   } else {
     // Create the conversation and its first message together, rather than an empty DM.
+    const started = Date.now();
     const { create_dm: created } = await request<{ create_dm: { dm_id: string; dm_type: string; last_message_id: string; last_author_id: string; last_message_text: string } | null }>(
       "create_dm",
       `mutation create_dm($members: [Snowflake], $dm_type: String!, $message_text: String, $client_id: String) {
@@ -75,11 +76,25 @@ export async function sendSleeperDm(recipientId: string, text: string, clientId:
           dm_id dm_type last_message_id last_author_id last_message_text
         }
       }`,
-      { members, dm_type: "single", message_text: text, client_id: clientId },
+      // Creation takes only the other member; lookup takes both member IDs.
+      { members: [recipientId], dm_type: "single", message_text: text, client_id: clientId },
     );
-    if (!created?.dm_id || created.dm_type !== "single" || !created.last_message_id
-      || String(created.last_author_id) !== String(me.user_id) || decodedText(created.last_message_text) !== text) {
+    if (!created?.dm_id || created.dm_type !== "single") {
       throw new SleeperMessageError("Sleeper did not confirm delivery. Check the DM before sending again.");
     }
+    if (created.last_message_id && String(created.last_author_id) === String(me.user_id)
+      && decodedText(created.last_message_text) === text) return;
+    // Sleeper can return empty last-message metadata while its first message is sent.
+    // Read to confirm it; never send a second message to fill that metadata.
+    const { messages } = await request<{ messages: { message_id: string; author_id: string; text: string; created: number; client_id: string | null }[] | null }>(
+      "messages",
+      "query messages($parent_id: Snowflake!) { messages(parent_id: $parent_id, show_hidden: false) { message_id author_id text created client_id } }",
+      { parent_id: created.dm_id },
+    );
+    const matches = Array.isArray(messages) ? messages.filter(message => message.message_id
+      && String(message.author_id) === String(me.user_id) && decodedText(message.text) === text
+      && (message.client_id == null || message.client_id === clientId)
+      && message.created >= started - 5000 && message.created <= Date.now() + 5000) : [];
+    if (matches.length !== 1) throw new SleeperMessageError("Sleeper did not confirm delivery. Check the DM before sending again.");
   }
 }

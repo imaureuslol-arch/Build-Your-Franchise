@@ -20,8 +20,9 @@ const botId = '1412094574553280512';
 let calls = [];
 let checks = 0;
 const test = async (name, run) => { await run(); checks++; console.log('PASS ' + name); };
-const mockSleeper = ({ existing = true, error = null, failure = null, mismatch = false, sender = botId, encoded = false } = {}) => {
+const mockSleeper = ({ existing = true, error = null, failure = null, mismatch = false, sender = botId, encoded = false, metadataEmpty = false, history = 'sent' } = {}) => {
   calls = [];
+  let firstText;
   globalThis.fetch = async (url, options) => {
     assert.equal(url, 'https://sleeper.com/graphql');
     assert.equal(options.headers.authorization, 'fake-session');
@@ -30,11 +31,19 @@ const mockSleeper = ({ existing = true, error = null, failure = null, mismatch =
     if (failure) throw Error(failure);
     if (error) return Response.json({ errors: [{ code: error, message: 'SECRET-upstream-detail' }] });
     const v = body.variables;
+    if (body.operationName === 'create_dm') {
+      assert.equal(v.members.length, 1); assert.notEqual(v.members[0], sender);
+      firstText = v.message_text;
+    }
+    const firstMessage = { message_id: '401', author_id: history === 'wrong-author' ? 'other' : sender,
+      text: encoded ? firstText?.replaceAll("'", '&#39;') : firstText, created: history === 'old' ? 1 : Date.now(),
+      client_id: history === 'wrong-client' ? 'other-request' : null };
     const data = {
       me: { user_id: sender },
       get_dm_by_members: existing ? { dm_id: '300', dm_type: 'single' } : null,
       create_message: { message_id: '400', parent_id: mismatch ? 'wrong-room' : '300', author_id: sender, text: encoded ? v.text?.replaceAll("'",'&#39;') : v.text },
-      create_dm: { dm_id: '300', dm_type: 'single', last_message_id: '400', last_author_id: sender, last_message_text: encoded ? v.message_text?.replaceAll("'",'&#39;') : v.message_text },
+      create_dm: { dm_id: '300', dm_type: 'single', last_message_id: '400', last_author_id: metadataEmpty ? null : sender, last_message_text: metadataEmpty ? null : encoded ? v.message_text?.replaceAll("'",'&#39;') : v.message_text },
+      messages: history === 'empty' ? [] : history === 'duplicate' ? [firstMessage, {...firstMessage, message_id: '402'}] : [firstMessage],
     };
     return Response.json({ data: { [body.operationName]: data[body.operationName] } });
   };
@@ -78,7 +87,21 @@ try {
   await test('new DM includes its first message in the creation request', async () => {
     mockSleeper({ existing: false }); await messaging.sendSleeperDm('200', 'Offer text', 'trade-client-id');
     assert.deepEqual(calls.map(c => c.operationName), ['me', 'get_dm_by_members', 'create_dm']);
-    assert.deepEqual(calls[2].variables, { members: [botId, '200'], dm_type: 'single', message_text: 'Offer text', client_id: 'trade-client-id' });
+    assert.deepEqual(calls[2].variables, { members: ['200'], dm_type: 'single', message_text: 'Offer text', client_id: 'trade-client-id' });
+  });
+  await test('empty new-DM metadata confirms the sent message by reading without sending again', async () => {
+    mockSleeper({existing:false, metadataEmpty:true, encoded:true});
+    await messaging.sendSleeperDm('200', "De'Anthony Melton", 'trade-client-id');
+    assert.deepEqual(calls.map(c=>c.operationName), ['me','get_dm_by_members','create_dm','messages']);
+    assert.deepEqual(calls[3].variables, {parent_id:'300'});
+  });
+  await test('unconfirmed new-DM history never triggers a resend', async () => {
+    for (const history of ['empty','wrong-author','wrong-client','old','duplicate']) {
+      mockSleeper({existing:false, metadataEmpty:true, history});
+      await assert.rejects(messaging.sendSleeperDm('200','Offer text','trade-client-id'), /did not confirm/);
+      assert.equal(calls.filter(c=>c.operationName==='create_dm').length,1);
+      assert.equal(calls.filter(c=>c.operationName==='create_message').length,0);
+    }
   });
   await test('site notifications reject personal accounts before sending', async () => {
     mockSleeper({sender:'100'});
